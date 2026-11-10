@@ -1,0 +1,8 @@
+:root { color-scheme: dark; font: 1rem/1.6 system-ui, sans-serif; background: #10221c; color: #ecf8f2; }
+body { margin: 0; }
+main { max-width: 56rem; padding: 2rem 1.25rem; margin: auto; }
+h1 { font-size: 2.5rem; }
+article { background: #18342a; border: 1px solid #47715c; border-radius: .75rem; padding: 1.25rem; margin: 1rem 0; }
+a { color: #8cf3bd; }
+summary { cursor: pointer; }
+:focus-visible { outline: 3px solid #8cf3bd; outline-offset: 4px; }
