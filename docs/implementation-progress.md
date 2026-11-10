@@ -37,8 +37,14 @@ Todos os tickets estão em https://github.com/users/Davi942/projects/1.
 
 ## Estado atual
 
-- Main atualizada antes de iniciar #1.
-- #1 em In progress, branch `feature/1-ambiente-local`, implementação e testes em andamento.
-- Primeiro teste HTTP de saúde executado antes da implementação: falhou com conexão recusada, como esperado na etapa vermelha do TDD.
-- #1: typecheck/build passaram; Compose `up --build --wait` passou; suíte de integração com PostgreSQL real passou (6/6), incluindo HTTP 503 durante indisponibilidade, recuperação para 200, seed idempotente e persistência após down/up. Serviços app e db saudáveis ao final. Revisão e PR pendentes.
-- Ainda não há PR de implementação nem issue concluída.
+- #1 concluído: PR [#13](https://github.com/Davi942/Bet-fake/pull/13) integrado por squash na main (`06d8144`); issue fechada e card Done confirmados. Typecheck/build, Compose e 6/6 testes passaram localmente e no CI. Revisão: 0 achados de padrões e 0 de requisitos.
+- #1 TDD: HTTP de saúde inicialmente falhou com conexão recusada; teste de indisponibilidade encontrou crash por conexão PostgreSQL ociosa e foi corrigido; teste de configuração encontrou NODE_ENV não documentado e foi corrigido.
+- #1 publicação: OAuth não tinha scope workflow. SSH já autenticado como Davi942 permitiu publicar preservando CI, sem mudar o token. Para push, usar `git push ssh://git@github.com/Davi942/Bet-fake.git <branch>`.
+- #1 revisão: persistência foi verificada com o saldo inicial. No #5, verificar por operações públicas que saldo já movimentado é preservado em reinício/reseed.
+- #2 iniciado na main atualizada: branch `feature/2-cadastro-login-permissoes`, card In progress.
+- #2 TDD: teste de cadastro executado antes da implementação, retornando 404. Autenticação e testes estão em desenvolvimento; ainda sem validação completa ou PR.
+- #2 etapa TDD publicada em `eb7d366`: CI [42897005082](https://github.com/Davi942/Bet-fake/actions/runs/42897005082) comprovou 10 testes passando e 3 falhando de forma esperada, por ausência de bloqueio após cinco erros (401 em vez de 429) e validação de origem (201 em vez de 403). Expiração de uma hora já passou antes da asserção de bloqueio no teste de relógio. Implementação desses cenários em andamento; ainda sem PR.
+- Infra local durante #2: Docker Desktop caiu em EOF e ficou preso em starting. Recuperado com comandos oficiais de parada/inicialização e `wsl --shutdown`, sem remover volumes. Daemon 29.9.2 confirmado disponível; serviços do projeto precisam ser iniciados novamente.
+- #2 validação final local: typecheck/build e Compose passaram; 13/13 testes passaram, incluindo expiração exata em uma hora, desbloqueio em 15 minutos, cinco falhas concorrentes, papéis e logout. App e db saudáveis ao final. Revisão e PR pendentes.
+- #2 revisão: 0 violações documentadas e 1 duplicação de geração de hash identificada em Standards; 0 falhas de Spec. Compartilhamento do hash e extensão do teste de restart para conta recém-criada/sessão ativa em correção. CI `42898592715` passou no commit `660e1c3`; validar novamente após o ajuste.
+- #2 correção de revisão concluída: seed e cadastro usam o mesmo hash assíncrono. Teste HTTP comprova conta nova e sessão ativa preservadas em down/up. Após fechar conexões HTTP antes do restart no teste, suíte completa 13/13 passou novamente, com build/typecheck e Compose saudáveis. PR/CI finais pendentes.

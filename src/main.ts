@@ -5,6 +5,7 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'node:path';
 import { Database } from './database';
 import { initializeDatabase } from './seed';
+import { Auth, AuthController, Clock } from './auth';
 
 @Controller('api')
 class ApiController {
@@ -33,18 +34,31 @@ class ApiController {
   }
 }
 
-@Module({ controllers: [ApiController], providers: [Database] })
+@Module({ controllers: [ApiController, AuthController], providers: [Database, Auth, Clock] })
 class AppModule {}
 
-async function bootstrap() {
+export async function createApplication(options: { now?: () => number } = {}) {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   app.enableShutdownHooks();
+  if (options.now) app.get(Clock).now = options.now;
+  app.use('/api', (request: { method: string; protocol: string; headers: Record<string, string | undefined> }, response: { setHeader(name: string, value: string): void; status(code: number): { json(body: unknown): void } }, next: () => void) => {
+    response.setHeader('Cache-Control', 'no-store');
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method)) {
+      const origin = request.headers.origin;
+      const expected = `${request.protocol}://${request.headers.host}`;
+      if ((origin !== undefined && origin !== expected) || request.headers['sec-fetch-site'] === 'cross-site') {
+        response.status(403).json({ message: 'Origem da solicitação não permitida.' });
+        return;
+      }
+    }
+    next();
+  });
   await initializeDatabase(app.get(Database).pool);
   app.useStaticAssets(join(process.cwd(), 'public'));
-  await app.listen(Number(process.env.PORT ?? 3000), '0.0.0.0');
+  return app;
 }
 
-bootstrap().catch((error: unknown) => {
+if (require.main === module) createApplication().then(app => app.listen(Number(process.env.PORT ?? 3000), '0.0.0.0')).catch((error: unknown) => {
   console.error(error);
   process.exitCode = 1;
 });

@@ -6,3 +6,10 @@ article { background: #18342a; border: 1px solid #47715c; border-radius: .75rem;
 a { color: #8cf3bd; }
 summary { cursor: pointer; }
 :focus-visible { outline: 3px solid #8cf3bd; outline-offset: 4px; }
+nav { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; }
+form { border: 1px solid #47715c; border-radius: .75rem; padding: 1.25rem; margin: 1rem 0; max-width: 30rem; }
+label { display: block; margin: .75rem 0; }
+input { display: block; box-sizing: border-box; width: 100%; padding: .6rem; font: inherit; }
+button { padding: .65rem 1rem; font: inherit; cursor: pointer; }
+button:disabled { opacity: .6; cursor: wait; }
+[hidden] { display: none !important; }
