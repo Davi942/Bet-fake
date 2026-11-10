@@ -1,12 +1,6 @@
-import { randomBytes, scryptSync } from 'node:crypto';
 import { Pool } from 'pg';
 import { migrateAuthentication } from './auth-migration';
-
-function passwordHash(password: string): string {
-  if (password.length < 8) throw new Error('Demo passwords must contain at least 8 characters');
-  const salt = randomBytes(16).toString('hex');
-  return `scrypt$${salt}$${scryptSync(password, salt, 64).toString('hex')}`;
-}
+import { hashPassword } from './password';
 
 // One transaction prevents a partially seeded demonstration after an interruption.
 export async function initializeDatabase(pool: Pool) {
@@ -55,8 +49,9 @@ export async function initializeDatabase(pool: Pool) {
     ]) {
       const existing = await client.query('SELECT id FROM users WHERE id = $1', [user.id]);
       if (!existing.rowCount) {
+        if (user.password.length < 8) throw new Error('Demo passwords must contain at least 8 characters');
         await client.query('INSERT INTO users(id, display_name, email, role, password_hash) VALUES ($1,$2,$3,$4,$5)',
-          [user.id, user.name, user.email, user.role, passwordHash(user.password)]);
+          [user.id, user.name, user.email, user.role, await hashPassword(user.password)]);
       }
     }
     const wallet = await client.query(`INSERT INTO wallets(user_id, balance_cents) VALUES ('demo-bettor', 10000) ON CONFLICT DO NOTHING RETURNING user_id`);

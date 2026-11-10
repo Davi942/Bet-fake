@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import test from 'node:test';
 import { compose } from './compose.mjs';
 
@@ -16,10 +17,23 @@ test('seed preserves demo accounts and wallets through repeated runs', () => {
 
 test('normal stop and start preserve stored fixture dates and lineups and existing accounts', async () => {
   const accounts = seed();
-  const before = await fetch(`${baseUrl}/api/demo`).then(response => response.json());
+  const before = await fetch(`${baseUrl}/api/demo`, { headers: { connection: 'close' } }).then(response => response.json());
+  const credentials = { displayName: 'Persistência', email: `${randomUUID()}@example.com`, password: 'Password123!' };
+  const signup = await fetch(`${baseUrl}/api/auth/signup`, {
+    method: 'POST', headers: { 'content-type': 'application/json', connection: 'close' }, body: JSON.stringify(credentials),
+  });
+  assert.equal(signup.status, 201);
+  const login = await fetch(`${baseUrl}/api/auth/login`, {
+    method: 'POST', headers: { 'content-type': 'application/json', connection: 'close' }, body: JSON.stringify(credentials),
+  });
+  assert.equal(login.status, 200);
+  const cookie = login.headers.get('set-cookie');
   compose('down');
   compose('up', '-d', '--wait', '--wait-timeout', '120');
   const after = await fetch(`${baseUrl}/api/demo`).then(response => response.json());
   assert.deepEqual(after, before);
   assert.deepEqual(seed(), accounts);
+  const account = await fetch(`${baseUrl}/api/account`, { headers: { cookie } });
+  assert.equal(account.status, 200);
+  assert.equal((await account.json()).balanceCents, 10000);
 });
