@@ -1,4 +1,4 @@
-import { BadRequestException, Body, ConflictException, Controller, Get, HttpCode, Injectable, Post, Req, Res, UnauthorizedException, ForbiddenException } from '@nestjs/common';
+import { BadRequestException, Body, ConflictException, Controller, Get, HttpCode, HttpException, Injectable, Post, Req, Res, UnauthorizedException, ForbiddenException } from '@nestjs/common';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { sign, verify } from 'jsonwebtoken';
 import { Database } from './database';
@@ -7,6 +7,7 @@ import { hashPassword, verifyPassword } from './password';
 interface Request { headers: Record<string, string | undefined>; }
 interface Response { setHeader(name: string, value: string): void; }
 interface User { id: string; display_name: string; email: string; role: 'bettor' | 'admin'; password_hash: string; }
+interface LoginUser extends User { failed_login_attempts: number; locked_until: Date | null; }
 interface Claims { sub: string; jti: string; iat: number; exp: number; }
 
 @Injectable()
@@ -58,15 +59,47 @@ export class Auth {
 
   async login(raw: unknown, response: Response) {
     const { email, password } = credentials(input(raw));
-    const result = await this.db.pool.query('SELECT * FROM users WHERE lower(btrim(email))=$1', [email]);
-    const user: User | undefined = result.rows[0];
-    if (!user || !await verifyPassword(password, user.password_hash)) throw new UnauthorizedException('E-mail ou senha incorretos.');
+    const user = await this.checkCredentials(email, password, response);
     const issued = Math.floor(this.clock.now() / 1000);
     const claims: Claims = { sub: user.id, jti: randomUUID(), iat: issued, exp: issued + 3600 };
     const token = sign(claims, await this.key(), { algorithm: 'HS256' });
     await this.db.pool.query('INSERT INTO auth_sessions(id,user_id,expires_at) VALUES($1,$2,$3)', [claims.jti, user.id, new Date(claims.exp * 1000)]);
     response.setHeader('Set-Cookie', `bet_session=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=3600`);
     return publicUser(user);
+  }
+
+  private async checkCredentials(email: string, password: string, response: Response): Promise<User> {
+    const client = await this.db.pool.connect();
+    let transaction = false;
+    try {
+      await client.query('BEGIN');
+      transaction = true;
+      // Lock this account so concurrent attempts cannot bypass the five-attempt limit.
+      const result = await client.query('SELECT * FROM users WHERE lower(btrim(email))=$1 FOR UPDATE', [email]);
+      const user: LoginUser | undefined = result.rows[0];
+      const now = this.clock.now();
+      let failure: UnauthorizedException | HttpException | undefined;
+      const blocked = (until: number) => {
+        const seconds = Math.ceil((until - now) / 1000);
+        response.setHeader('Retry-After', String(seconds));
+        return new HttpException({ message: 'Conta bloqueada por 15 minutos após cinco tentativas incorretas.', retryAfterSeconds: seconds }, 429);
+      };
+      if (!user) failure = new UnauthorizedException('E-mail ou senha incorretos.');
+      else if (user.locked_until && user.locked_until.getTime() > now) failure = blocked(user.locked_until.getTime());
+      else if (!await verifyPassword(password, user.password_hash)) {
+        const attempts = (user.locked_until ? 0 : user.failed_login_attempts) + 1;
+        const until = attempts >= 5 ? new Date(now + 15 * 60 * 1000) : null;
+        await client.query('UPDATE users SET failed_login_attempts=$2,locked_until=$3 WHERE id=$1', [user.id, attempts, until]);
+        failure = until ? blocked(until.getTime()) : new UnauthorizedException('E-mail ou senha incorretos.');
+      } else await client.query('UPDATE users SET failed_login_attempts=0,locked_until=NULL WHERE id=$1', [user.id]);
+      await client.query('COMMIT');
+      transaction = false;
+      if (failure) throw failure;
+      return user!;
+    } catch (error) {
+      if (transaction) await client.query('ROLLBACK');
+      throw error;
+    } finally { client.release(); }
   }
 
   async authenticate(request: Request, role?: User['role']): Promise<{ user: User; claims: Claims }> {

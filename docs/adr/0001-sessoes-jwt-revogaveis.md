@@ -1,0 +1,3 @@
+# Sessões JWT em cookie HttpOnly com revogação no servidor
+
+Usamos JWT de uma hora em cookie HttpOnly/SameSite para que o frontend em JavaScript não precise armazenar ou manipular o token, com validação de origem nas operações que alteram estado. Mantemos também o identificador da sessão e a chave de assinatura no PostgreSQL: isso permite revogar o acesso no logout e preservar sessões em reinícios, ao custo de consultar o banco na autenticação. JWT totalmente sem estado simplificaria essa consulta, mas deixaria o token utilizável até expirar após o logout; para a demonstração local de até 20 apostadores, preferimos a revogação imediata.

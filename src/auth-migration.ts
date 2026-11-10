@@ -3,6 +3,8 @@ import { PoolClient } from 'pg';
 // Additive and repeatable: existing accounts, passwords and balances survive.
 export async function migrateAuthentication(client: PoolClient) {
   await client.query(`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS failed_login_attempts integer NOT NULL DEFAULT 0;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_until timestamptz;
     CREATE UNIQUE INDEX IF NOT EXISTS users_normalized_email ON users (lower(btrim(email)));
     CREATE TABLE IF NOT EXISTS auth_signing_key (
       singleton boolean PRIMARY KEY DEFAULT true CHECK (singleton), secret text NOT NULL
