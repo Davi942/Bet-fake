@@ -15,8 +15,9 @@ copiar `.env.example`. O primeiro build baixa imagens e dependências; a execuç
 não precisa de serviços externos.
 
 O cadastro público cria apostadores, e o login abre a área pessoal ou administrativa
-conforme o perfil. A demonstração de partidas continua pública. Gerenciamento de
-times, jogadores, partidas e operações de carteira/apostas chegam nos próximos tickets.
+conforme o perfil. A demonstração de partidas continua pública. Administradores
+podem gerenciar times, jogadores e titulares atuais. Partidas e operações de
+carteira/apostas chegam nos próximos tickets.
 
 | Conta | E-mail | Senha inicial |
 | --- | --- | --- |
@@ -109,9 +110,28 @@ contas, senhas ou carteiras existentes.
 | `GET /api/auth/me`, `POST /api/auth/logout` | Sessão válida |
 | `GET /api/account` | Somente apostador; perfil e `balanceCents` |
 | `GET /api/admin/overview` | Somente administrador; entrada da área administrativa |
-| `GET /api/demo` | Público |
+| `GET /api/demo` | Público; partidas com nomes e escalações fixados |
+| `GET /api/teams`, `GET /api/teams/:id` | Público; cadastros e titulares atuais |
+| `POST /api/teams`, `PATCH /api/teams/:id` (`name`) | Somente administrador |
+| `POST /api/teams/:id/players`, `PATCH /api/teams/:id/players/:playerId` (`name`, `position`, `overall`) | Somente administrador |
+| `PUT /api/teams/:id/lineup` (`playerIds`) | Somente administrador; 11 titulares únicos |
+| `POST /api/teams/:id/archive`, `POST /api/teams/:id/players/:playerId/archive` | Somente administrador; arquivamento permanente |
 
 Falhas retornam 400 (dados inválidos), 401 (autenticação), 403 (perfil/origem),
 409 (e-mail existente) ou 429 (conta temporariamente bloqueada). Os testes HTTP
 usam banco real e uma aplicação separada com relógio injetado para verificar os
 limites exatos de expiração/bloqueio, sem rotas de teste no servidor de produção.
+
+Times podem ser cadastrados sem elenco completo. Posições permitidas: `goleiro`,
+`defensor`, `meio-campista` e `atacante`; overall de jogador é inteiro de 1 a 100.
+Escalação válida exige 1 goleiro e 10 jogadores de linha ativos do mesmo time.
+O campo público `overall` é a média exata dos 11 titulares, sem arredondamento na
+API (a tela apresenta até duas casas); fica `null` quando `lineupValid` é falso.
+Editar uma posição pode invalidar a escalação até nova escolha de titulares.
+Arquivar retira de novas escalações, sem apagar o cadastro nem as escalações já
+fixadas em partidas. Não há transferência entre times ou exclusão definitiva.
+
+A migração aditiva preserva cadastros existentes e inicializa os titulares da
+demonstração apenas uma vez. Reiniciar ou executar o seed não repõe jogadores
+retirados da escalação. Nomes dos times e atributos dos jogadores das partidas
+publicadas ficam fixados, independentemente de edições nos cadastros atuais.

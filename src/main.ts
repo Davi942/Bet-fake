@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { Database } from './database';
 import { initializeDatabase } from './seed';
 import { Auth, AuthController, Clock } from './auth';
+import { Teams, TeamsController } from './teams';
 
 @Controller('api')
 class ApiController {
@@ -15,7 +16,8 @@ class ApiController {
   async demo() {
     const teams = await this.database.pool.query("SELECT id,name FROM teams WHERE id LIKE 'demo-team-%' ORDER BY id");
     const fixtures = await this.database.pool.query(`SELECT id,home_team_id AS "homeTeamId",
-      away_team_id AS "awayTeamId",scheduled_at AS "scheduledAt",status FROM fixtures WHERE id LIKE 'demo-fixture-%' ORDER BY id`);
+      away_team_id AS "awayTeamId",home_team_name AS "homeTeamName",away_team_name AS "awayTeamName",
+      scheduled_at AS "scheduledAt",status FROM fixtures WHERE id LIKE 'demo-fixture-%' ORDER BY id`);
     const lineups = await this.database.pool.query(`SELECT fixture_id AS "fixtureId",team_id AS "teamId",
       player_id AS "playerId",name,position,overall FROM fixture_lineups WHERE fixture_id LIKE 'demo-fixture-%' ORDER BY player_id`);
     return { teams: teams.rows, fixtures: fixtures.rows.map(fixture => ({
@@ -34,7 +36,7 @@ class ApiController {
   }
 }
 
-@Module({ controllers: [ApiController, AuthController], providers: [Database, Auth, Clock] })
+@Module({ controllers: [ApiController, AuthController, TeamsController], providers: [Database, Auth, Clock, Teams] })
 class AppModule {}
 
 export async function createApplication(options: { now?: () => number } = {}) {

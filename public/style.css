@@ -13,3 +13,6 @@ input { display: block; box-sizing: border-box; width: 100%; padding: .6rem; fon
 button { padding: .65rem 1rem; font: inherit; cursor: pointer; }
 button:disabled { opacity: .6; cursor: wait; }
 [hidden] { display: none !important; }
+select { font: inherit; padding: .6rem; max-width: 100%; }
+input[type=checkbox] { display: inline-block; width: auto; margin-right: .5rem; }
+#teams article button { margin-top: .5rem; }

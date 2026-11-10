@@ -5,16 +5,16 @@
 <title>Bet-fake — demonstração local</title>
 <link rel="stylesheet" href="/style.css">
 <script src="/demo.js" defer></script>
-<script src="/auth.js" defer></script>
+<script src="/auth.js" defer></script><script src="/teams.js" defer></script>
 <body><main><h1>Bet-fake</h1><p>Dinheiro fictício — projeto de estudo.</p>
-<nav aria-label="Navegação"><a href="#fixtures">Partidas públicas</a> <a href="#access" id="access-link">Entrar ou cadastrar</a> <a href="#personal" id="personal-link" hidden>Minha conta</a> <a href="#administration" id="admin-link" hidden>Administração</a> <button id="logout" hidden>Sair</button></nav>
+<nav aria-label="Navegação"><a href="#teams-section">Times e jogadores</a> <a href="#fixtures">Partidas públicas</a> <a href="#access" id="access-link">Entrar ou cadastrar</a> <a href="#personal" id="personal-link" hidden>Minha conta</a> <a href="#administration" id="admin-link" hidden>Administração</a> <button id="logout" hidden>Sair</button></nav>
 <p id="auth-status" role="status" aria-live="polite"></p>
 <section id="access" aria-labelledby="access-title"><h2 id="access-title">Acesse sua conta</h2>
 <form id="login-form"><h3>Entrar</h3><label>E-mail <input name="email" type="email" autocomplete="username" required maxlength="254"></label><label>Senha <input name="password" type="password" autocomplete="current-password" required maxlength="1024"></label><button>Entrar</button></form>
 <form id="signup-form"><h3>Cadastro de apostador</h3><p>Dinheiro fictício — projeto de estudo.</p><label>Nome de exibição <input name="displayName" autocomplete="nickname" required maxlength="100"></label><label>E-mail <input name="email" type="email" autocomplete="email" required maxlength="254"></label><label>Senha (mínimo de 8 caracteres) <input name="password" type="password" autocomplete="new-password" required minlength="8" maxlength="1024"></label><button>Criar conta</button></form></section>
 <section id="personal" hidden><h2>Minha conta</h2><p id="current-user"></p><p>Dinheiro fictício — projeto de estudo.</p><p id="balance"></p></section>
-<section id="administration" hidden><h2>Administração</h2><p id="admin-user"></p><p>Gerenciamento de times, jogadores e partidas será disponibilizado nas próximas etapas.</p></section>
-<h2>Partidas agendadas</h2><p>Horários em America/Sao_Paulo.</p>
+<section id="administration" hidden><h2>Administração</h2><p id="admin-user"></p><div id="team-management"></div></section>
+<section id="teams-section"><h2>Times e jogadores</h2><p>Dados atuais. As escalações das partidas publicadas permanecem fixadas.</p><p id="team-status" role="status" aria-live="polite"></p><div id="teams"></div></section><h2>Partidas agendadas</h2><p>Horários em America/Sao_Paulo.</p>
 <p id="status" role="status">Carregando demonstração…</p><div id="fixtures"></div>
 <a href="/api/health">Verificar conexão com o banco</a></main></body>
 </html>

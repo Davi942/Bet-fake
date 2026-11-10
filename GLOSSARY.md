@@ -4,6 +4,13 @@ Casa de apostas simulada para estudo e portfólio, com dinheiro inteiramente fic
 
 ## Linguagem
 
+**Time**:
+Equipe de futebol que reúne jogadores e possui uma escalação atual de titulares.
+
+**Jogador**:
+Atleta de futebol cadastrado em um time, com nome, posição e overall.
+_Evitar_: apostador, usuário, para designar o atleta.
+
 **Aposta**:
 Compromisso de um valor fictício com um resultado de uma partida, à odd fixada quando a aposta é aceita.
 
@@ -32,7 +39,10 @@ Resultado em que os dois times terminam com a mesma quantidade de gols, incluind
 Medida inteira de força de um jogador, de 1 a 100.
 
 **Overall do time**:
-Média do overall dos 11 titulares que representam o time na partida.
+Média do overall dos 11 titulares da escalação considerada, atual ou fixada para uma partida.
+
+**Escalação atual**:
+Seleção dos titulares de um time que pode ser alterada para partidas futuras, sem modificar escalações já fixadas nas partidas publicadas.
 
 **Escalação da partida**:
 Conjunto dos 11 titulares de um time e de seus atributos, fixado quando a partida é disponibilizada para apostas.
