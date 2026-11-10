@@ -7,8 +7,8 @@ async function loadDemo() {
     for (const fixture of demo.fixtures) {
       const article = document.createElement('article');
       const title = document.createElement('h3');
-      const home = demo.teams.find(team => team.id === fixture.homeTeamId);
-      const away = demo.teams.find(team => team.id === fixture.awayTeamId);
+      const home = { id: fixture.homeTeamId, name: fixture.homeTeamName };
+      const away = { id: fixture.awayTeamId, name: fixture.awayTeamName };
       title.textContent = `${home.name} × ${away.name}`;
       const date = document.createElement('p');
       date.textContent = new Intl.DateTimeFormat('pt-BR', {

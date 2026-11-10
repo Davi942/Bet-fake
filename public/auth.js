@@ -6,6 +6,7 @@ let sessionGeneration = 0;
 
 function clearSession() {
   sessionGeneration++;
+  document.dispatchEvent(new CustomEvent('session-changed', { detail: null }));
   personal.hidden = administration.hidden = true;
   document.querySelector('#current-user').textContent = '';
   document.querySelector('#admin-user').textContent = '';
@@ -44,6 +45,7 @@ async function showSession(user) {
   personal.hidden = document.querySelector('#personal-link').hidden = !isBettor;
   administration.hidden = document.querySelector('#admin-link').hidden = isBettor;
   document.querySelector(isBettor ? '#current-user' : '#admin-user').textContent = `${user.displayName} (${user.email})`;
+  document.dispatchEvent(new CustomEvent('session-changed', { detail: user }));
   if (isBettor) document.querySelector('#balance').textContent = `Saldo disponível: ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(details.balanceCents / 100)}`;
 }
 

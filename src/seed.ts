@@ -1,6 +1,7 @@
 import { Pool } from 'pg';
 import { migrateAuthentication } from './auth-migration';
 import { hashPassword } from './password';
+import { migrateTeams } from './teams-migration';
 
 // One transaction prevents a partially seeded demonstration after an interruption.
 export async function initializeDatabase(pool: Pool) {
@@ -43,6 +44,8 @@ export async function initializeDatabase(pool: Pool) {
       );
     `);
     await migrateAuthentication(client);
+    await client.query(`ALTER TABLE fixtures ADD COLUMN IF NOT EXISTS home_team_name text;
+      ALTER TABLE fixtures ADD COLUMN IF NOT EXISTS away_team_name text;`);
     for (const user of [
       { id: 'demo-admin', name: 'Administrador de demonstração', email: 'admin@betfake.local', role: 'admin', password: process.env.DEMO_ADMIN_PASSWORD ?? 'AdminDemo123!' },
       { id: 'demo-bettor', name: 'Apostador de demonstração', email: 'apostador@betfake.local', role: 'bettor', password: process.env.DEMO_BETTOR_PASSWORD ?? 'ApostadorDemo123!' },
@@ -70,8 +73,9 @@ export async function initializeDatabase(pool: Pool) {
     for (let fixture = 1; fixture <= 2; fixture++) {
       const home = `demo-team-${fixture * 2 - 1}`;
       const away = `demo-team-${fixture * 2}`;
-      const inserted = await client.query(`INSERT INTO fixtures(id,home_team_id,away_team_id,scheduled_at,status)
-        VALUES ($1,$2,$3,now() + $4 * interval '1 day','scheduled') ON CONFLICT DO NOTHING RETURNING id`,
+      const inserted = await client.query(`INSERT INTO fixtures(id,home_team_id,away_team_id,scheduled_at,status,home_team_name,away_team_name)
+        VALUES ($1,$2,$3,now() + $4 * interval '1 day','scheduled',
+          (SELECT name FROM teams WHERE id=$2),(SELECT name FROM teams WHERE id=$3)) ON CONFLICT DO NOTHING RETURNING id`,
         [`demo-fixture-${fixture}`, home, away, fixture]);
       if (inserted.rowCount) {
         await client.query(`INSERT INTO fixture_lineups(fixture_id,team_id,player_id,name,position,overall)
@@ -79,6 +83,7 @@ export async function initializeDatabase(pool: Pool) {
           [`demo-fixture-${fixture}`, home, away]);
       }
     }
+    await migrateTeams(client);
     await client.query('COMMIT');
   } catch (error) {
     await client.query('ROLLBACK');

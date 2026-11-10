@@ -10,20 +10,20 @@ O usuário autorizou definir interfaces públicas e pontos de teste sem confirma
 
 Todos os tickets estão em https://github.com/users/Davi942/projects/1.
 
-| Issue | Entrega | Bloqueadores |
-| --- | --- | --- |
-| [#1](https://github.com/Davi942/Bet-fake/issues/1) | Ambiente local | Nenhum |
-| [#2](https://github.com/Davi942/Bet-fake/issues/2) | Cadastro, login e permissões | #1 |
-| [#3](https://github.com/Davi942/Bet-fake/issues/3) | Times e jogadores | #2 |
-| [#4](https://github.com/Davi942/Bet-fake/issues/4) | Partidas e mercados pré-jogo | #3 |
-| [#5](https://github.com/Davi942/Bet-fake/issues/5) | Carteira e extrato | #2 |
-| [#6](https://github.com/Davi942/Bet-fake/issues/6) | Apostas pré-jogo | #4, #5 |
-| [#7](https://github.com/Davi942/Bet-fake/issues/7) | Simulação ao vivo | #4 |
-| [#8](https://github.com/Davi942/Bet-fake/issues/8) | Apostas ao vivo | #6, #7 |
-| [#9](https://github.com/Davi942/Bet-fake/issues/9) | Liquidação | #6, #7 |
-| [#10](https://github.com/Davi942/Bet-fake/issues/10) | Cancelamento e estorno | #4, #5, #6 |
-| [#11](https://github.com/Davi942/Bet-fake/issues/11) | Painel e auditoria | #3, #4, #5, #6, #9, #10 |
-| [#12](https://github.com/Davi942/Bet-fake/issues/12) | Experiência responsiva | #2, #4, #5, #6, #7, #8, #9, #10, #11 |
+| Issue | Entrega | Bloqueadores | Estado / PR |
+| --- | --- | --- | --- |
+| [#1](https://github.com/Davi942/Bet-fake/issues/1) | Ambiente local | Nenhum | Done / [#13](https://github.com/Davi942/Bet-fake/pull/13) |
+| [#2](https://github.com/Davi942/Bet-fake/issues/2) | Cadastro, login e permissões | #1 | Done / [#14](https://github.com/Davi942/Bet-fake/pull/14) |
+| [#3](https://github.com/Davi942/Bet-fake/issues/3) | Times e jogadores | #2 | In progress |
+| [#4](https://github.com/Davi942/Bet-fake/issues/4) | Partidas e mercados pré-jogo | #3 | Backlog |
+| [#5](https://github.com/Davi942/Bet-fake/issues/5) | Carteira e extrato | #2 | Backlog |
+| [#6](https://github.com/Davi942/Bet-fake/issues/6) | Apostas pré-jogo | #4, #5 | Backlog |
+| [#7](https://github.com/Davi942/Bet-fake/issues/7) | Simulação ao vivo | #4 | Backlog |
+| [#8](https://github.com/Davi942/Bet-fake/issues/8) | Apostas ao vivo | #6, #7 | Backlog |
+| [#9](https://github.com/Davi942/Bet-fake/issues/9) | Liquidação | #6, #7 | Backlog |
+| [#10](https://github.com/Davi942/Bet-fake/issues/10) | Cancelamento e estorno | #4, #5, #6 | Backlog |
+| [#11](https://github.com/Davi942/Bet-fake/issues/11) | Painel e auditoria | #3, #4, #5, #6, #9, #10 | Backlog |
+| [#12](https://github.com/Davi942/Bet-fake/issues/12) | Experiência responsiva | #2, #4, #5, #6, #7, #8, #9, #10, #11 | Backlog |
 
 ## Pontos de teste
 
@@ -48,3 +48,9 @@ Todos os tickets estão em https://github.com/users/Davi942/projects/1.
 - #2 validação final local: typecheck/build e Compose passaram; 13/13 testes passaram, incluindo expiração exata em uma hora, desbloqueio em 15 minutos, cinco falhas concorrentes, papéis e logout. App e db saudáveis ao final. Revisão e PR pendentes.
 - #2 revisão: 0 violações documentadas e 1 duplicação de geração de hash identificada em Standards; 0 falhas de Spec. Compartilhamento do hash e extensão do teste de restart para conta recém-criada/sessão ativa em correção. CI `42898592715` passou no commit `660e1c3`; validar novamente após o ajuste.
 - #2 correção de revisão concluída: seed e cadastro usam o mesmo hash assíncrono. Teste HTTP comprova conta nova e sessão ativa preservadas em down/up. Após fechar conexões HTTP antes do restart no teste, suíte completa 13/13 passou novamente, com build/typecheck e Compose saudáveis. PR/CI finais pendentes.
+- #2 concluído: PR [#14](https://github.com/Davi942/Bet-fake/pull/14) integrado por squash (`a68529c`), main local atualizada, issue fechada e card Done confirmados. CI final 42899842021/42899859239 passou, ambos com 13 testes. Duplicação de hash corrigida; sem falhas de requisitos.
+- #3 iniciado a partir da main atualizada: branch `feature/3-times-jogadores`, card In progress.
+- #3 TDD em andamento: cadastro/consulta pública de time passou após teste inicial 404; cadastro de jogador também apresentou 404 antes da implementação. Escalação incompleta apresenta `lineupValid: false` e overall indisponível; migração de escalações demonstrativas executa uma única vez para preservar mudanças do usuário.
+- #3: seis testes direcionados passaram. Capturado e corrigido erro 23502 de nomes históricos NOT NULL omitidos no seed; nomes e atributos publicados ficam fixos. Verificação real no Edge confirmou consulta pública, login admin sem reload, cadastro de time/jogador, rascunho preservado em atualização da sessão e logout. Suíte completa ainda em execução.
+- #3 validação final: 19/19 testes passaram, typecheck/build e Compose passaram, serviços saudáveis. Revisão e PR pendentes.
+- Qualidade a concluir antes dos testes financeiros: executar a suíte local em projeto Compose isolado (ou equivalente documentado) para evitar misturar dados de testes com a demonstração persistida. CI já usa projeto isolado; o comando local atual avisa que não deve ser usado em ambiente compartilhado.
