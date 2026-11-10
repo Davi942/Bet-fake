@@ -1,5 +1,6 @@
 import { randomBytes, scryptSync } from 'node:crypto';
 import { Pool } from 'pg';
+import { migrateAuthentication } from './auth-migration';
 
 function passwordHash(password: string): string {
   if (password.length < 8) throw new Error('Demo passwords must contain at least 8 characters');
@@ -47,6 +48,7 @@ export async function initializeDatabase(pool: Pool) {
         PRIMARY KEY (fixture_id, player_id)
       );
     `);
+    await migrateAuthentication(client);
     for (const user of [
       { id: 'demo-admin', name: 'Administrador de demonstração', email: 'admin@betfake.local', role: 'admin', password: process.env.DEMO_ADMIN_PASSWORD ?? 'AdminDemo123!' },
       { id: 'demo-bettor', name: 'Apostador de demonstração', email: 'apostador@betfake.local', role: 'bettor', password: process.env.DEMO_BETTOR_PASSWORD ?? 'ApostadorDemo123!' },

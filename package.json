@@ -2,7 +2,9 @@
   "name": "bet-fake",
   "version": "0.1.0",
   "private": true,
-  "engines": { "node": ">=26 <27" },
+  "engines": {
+    "node": ">=26 <27"
+  },
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
@@ -14,11 +16,13 @@
     "@nestjs/common": "^11.1.0",
     "@nestjs/core": "^11.1.0",
     "@nestjs/platform-express": "^11.1.0",
+    "jsonwebtoken": "^9.0.3",
     "pg": "^8.16.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2"
   },
   "devDependencies": {
+    "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^26.0.0",
     "@types/pg": "^8.15.0",
     "typescript": "^6.0.0"

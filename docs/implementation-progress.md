@@ -37,8 +37,9 @@ Todos os tickets estão em https://github.com/users/Davi942/projects/1.
 
 ## Estado atual
 
-- Main atualizada antes de iniciar #1.
-- #1 em In progress, branch `feature/1-ambiente-local`, implementação e testes em andamento.
-- Primeiro teste HTTP de saúde executado antes da implementação: falhou com conexão recusada, como esperado na etapa vermelha do TDD.
-- #1: typecheck/build passaram; Compose `up --build --wait` passou; suíte de integração com PostgreSQL real passou (6/6), incluindo HTTP 503 durante indisponibilidade, recuperação para 200, seed idempotente e persistência após down/up. Serviços app e db saudáveis ao final. Revisão e PR pendentes.
-- Ainda não há PR de implementação nem issue concluída.
+- #1 concluído: PR [#13](https://github.com/Davi942/Bet-fake/pull/13) integrado por squash na main (`06d8144`); issue fechada e card Done confirmados. Typecheck/build, Compose e 6/6 testes passaram localmente e no CI. Revisão: 0 achados de padrões e 0 de requisitos.
+- #1 TDD: HTTP de saúde inicialmente falhou com conexão recusada; teste de indisponibilidade encontrou crash por conexão PostgreSQL ociosa e foi corrigido; teste de configuração encontrou NODE_ENV não documentado e foi corrigido.
+- #1 publicação: OAuth não tinha scope workflow. SSH já autenticado como Davi942 permitiu publicar preservando CI, sem mudar o token. Para push, usar `git push ssh://git@github.com/Davi942/Bet-fake.git <branch>`.
+- #1 revisão: persistência foi verificada com o saldo inicial. No #5, verificar por operações públicas que saldo já movimentado é preservado em reinício/reseed.
+- #2 iniciado na main atualizada: branch `feature/2-cadastro-login-permissoes`, card In progress.
+- #2 TDD: teste de cadastro executado antes da implementação, retornando 404. Autenticação e testes estão em desenvolvimento; ainda sem validação completa, commit ou PR.

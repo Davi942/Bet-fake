@@ -14,8 +14,9 @@ os dados de demonstração automaticamente. Não é necessário instalar Node ou
 copiar `.env.example`. O primeiro build baixa imagens e dependências; a execução
 não precisa de serviços externos.
 
-Esta etapa entrega o ambiente e os dados iniciais. Login, administração e apostas
-serão implementados nos próximos tickets; as contas abaixo já estão persistidas.
+O cadastro público cria apostadores, e o login abre a área pessoal ou administrativa
+conforme o perfil. A demonstração de partidas continua pública. Gerenciamento de
+times, jogadores, partidas e operações de carteira/apostas chegam nos próximos tickets.
 
 | Conta | E-mail | Senha inicial |
 | --- | --- | --- |
@@ -85,3 +86,32 @@ Os testes usam PostgreSQL real, verificam a demonstração e reiniciam a aplica�
 para conferir a persistência. `TEST_BASE_URL` permite alterar a URL se necessário.
 Não use a suíte em um ambiente compartilhado: ela interrompe brevemente o serviço.
 O CI executa os mesmos testes com um projeto Compose isolado.
+
+Cadastro exige nome de exibição, e-mail único (sem distinguir maiúsculas ou espaços
+nas extremidades) e senha com pelo menos 8 caracteres. Somente apostadores podem
+ser criados pelo cadastro público; cada um recebe R$ 100,00 fictícios uma única vez.
+Após cinco senhas incorretas consecutivas, a conta fica bloqueada por 15 minutos.
+Login bem-sucedido zera a contagem. A sessão dura uma hora e sair revoga a sessão
+no servidor. Após expirar, entre novamente, revise e confirme a ação; a aplicação
+nunca reenvia automaticamente operações pendentes.
+
+Autenticação usa JWT HS256 assinado por chave aleatória persistida no PostgreSQL,
+com sessão revogável e cookie `HttpOnly; SameSite=Strict` (sem token no localStorage).
+O ambiente local usa HTTP. Requisições de alteração com origem de outro site são
+recusadas, inclusive login e cadastro. Clientes sem navegador podem omitir `Origin`.
+Migração aditiva cria tabelas de autenticação e campos de bloqueio sem recriar
+contas, senhas ou carteiras existentes.
+
+| Interface HTTP | Acesso |
+| --- | --- |
+| `POST /api/auth/signup` (`displayName`, `email`, `password`) | Público; cria apostador |
+| `POST /api/auth/login` (`email`, `password`) | Público; inicia sessão |
+| `GET /api/auth/me`, `POST /api/auth/logout` | Sessão válida |
+| `GET /api/account` | Somente apostador; perfil e `balanceCents` |
+| `GET /api/admin/overview` | Somente administrador; entrada da área administrativa |
+| `GET /api/demo` | Público |
+
+Falhas retornam 400 (dados inválidos), 401 (autenticação), 403 (perfil/origem),
+409 (e-mail existente) ou 429 (conta temporariamente bloqueada). Os testes HTTP
+usam banco real e uma aplicação separada com relógio injetado para verificar os
+limites exatos de expiração/bloqueio, sem rotas de teste no servidor de produção.
