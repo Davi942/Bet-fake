@@ -1,0 +1,37 @@
+services:
+  db:
+    image: postgres:18-bookworm
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-bet_fake}
+      POSTGRES_USER: ${POSTGRES_USER:-bet_fake}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local-demo-password}
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  app:
+    build: .
+    ports:
+      - "127.0.0.1:${APP_PORT:-3000}:3000"
+    environment:
+      PORT: 3000
+      PGHOST: db
+      PGPORT: 5432
+      PGDATABASE: ${POSTGRES_DB:-bet_fake}
+      PGUSER: ${POSTGRES_USER:-bet_fake}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-local-demo-password}
+      DEMO_ADMIN_PASSWORD: ${DEMO_ADMIN_PASSWORD:-AdminDemo123!}
+      DEMO_BETTOR_PASSWORD: ${DEMO_BETTOR_PASSWORD:-ApostadorDemo123!}
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+volumes:
+  postgres_data:
