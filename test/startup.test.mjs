@@ -1,0 +1,76 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { compose } from './compose.mjs';
+
+// Exercise the shipped entry point, with a TCP fault at the database boundary.
+// The application already running in Compose and its HTTP port stay untouched.
+async function startupAfterConnectionTimeout() {
+  const { createServer, connect } = require('node:net');
+  const { spawn } = require('node:child_process');
+  const assert = require('node:assert/strict');
+  const sockets = new Set();
+  const track = socket => {
+    sockets.add(socket);
+    socket.on('error', () => {});
+    socket.once('close', () => sockets.delete(socket));
+    return socket;
+  };
+  let connections = 0;
+  const proxy = createServer(socket => {
+    track(socket);
+    connections += 1;
+    // Leave the first handshake unanswered until the real client times out.
+    if (connections === 1) return;
+    const upstream = track(connect({ host: process.env.PGHOST, port: Number(process.env.PGPORT) }));
+    socket.pipe(upstream).pipe(socket);
+    socket.once('close', () => upstream.destroy());
+    upstream.once('close', () => socket.destroy());
+  });
+  await new Promise((resolve, reject) => {
+    proxy.once('error', reject);
+    proxy.listen(0, '127.0.0.1', resolve);
+  });
+  const reservation = createServer();
+  await new Promise(resolve => reservation.listen(0, '127.0.0.1', resolve));
+  const port = reservation.address().port;
+  await new Promise(resolve => reservation.close(resolve));
+  let logs = '';
+  const child = spawn(process.execPath, ['dist/main.js'], {
+    env: { ...process.env, PORT: String(port), PGHOST: '127.0.0.1', PGPORT: String(proxy.address().port) },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  child.stdout.on('data', data => { logs += data; });
+  child.stderr.on('data', data => { logs += data; });
+  const closed = new Promise(resolve => child.once('close', resolve));
+  const safeLogs = () => process.env.PGPASSWORD ? logs.replaceAll(process.env.PGPASSWORD, '<REDACTED>') : logs;
+  try {
+    const deadline = Date.now() + 20_000;
+    while (Date.now() < deadline) {
+      assert.equal(child.exitCode, null, `Production bootstrap exited before readiness:\n${safeLogs()}`);
+      let response;
+      try {
+        response = await fetch(`http://127.0.0.1:${port}/api/health`, { signal: AbortSignal.timeout(1000) });
+      } catch { /* The HTTP listener starts only after database initialization. */ }
+      if (response?.ok) {
+        assert.deepEqual(await response.json(), { status: 'ok', database: 'up' });
+        assert.ok(connections > 1, 'Readiness must recover after the unanswered first PostgreSQL handshake');
+        console.log(JSON.stringify({ status: 'ok', connections }));
+        return;
+      }
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    assert.fail(`Production bootstrap did not become ready after the transient timeout:\n${safeLogs()}`);
+  } finally {
+    child.kill('SIGKILL');
+    await closed;
+    for (const socket of sockets) socket.destroy();
+    await new Promise(resolve => proxy.close(resolve));
+  }
+}
+
+test('production bootstrap becomes healthy after a transient PostgreSQL connection timeout', () => {
+  const output = compose('exec', '-T', 'app', 'node', '-e', `(${startupAfterConnectionTimeout.toString()})().catch(error => { console.error(error); process.exitCode = 1; })`);
+  const result = JSON.parse(output.trim());
+  assert.equal(result.status, 'ok');
+  assert.ok(result.connections > 1);
+});

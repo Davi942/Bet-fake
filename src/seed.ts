@@ -1,11 +1,31 @@
 import { Pool } from 'pg';
+import { setTimeout as delay } from 'node:timers/promises';
 import { migrateAuthentication } from './auth-migration';
 import { hashPassword } from './password';
 import { migrateTeams } from './teams-migration';
 
+async function connectForStartup(pool: Pool) {
+  const deadline = Date.now() + 30_000;
+  for (;;) {
+    try {
+      return await pool.connect();
+    } catch (error) {
+      const failure = error as { code?: string; message?: string };
+      const transient = ['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'EHOSTUNREACH', 'ENETUNREACH', 'EAI_AGAIN', '57P03'].includes(failure.code ?? '')
+        || failure.message === 'Connection terminated due to connection timeout'
+        || failure.message === 'Connection terminated unexpectedly';
+      // Reserve enough time for the next normal connection attempt. Runtime
+      // health checks keep their short timeout; no transaction is retried.
+      const connectionTimeout = pool.options.connectionTimeoutMillis ?? 3000;
+      if (!transient || Date.now() + 250 + connectionTimeout > deadline) throw error;
+      await delay(250);
+    }
+  }
+}
+
 // One transaction prevents a partially seeded demonstration after an interruption.
 export async function initializeDatabase(pool: Pool) {
-  const client = await pool.connect();
+  const client = await connectForStartup(pool);
   try {
     await client.query('BEGIN');
     await client.query('SELECT pg_advisory_xact_lock(942001)');

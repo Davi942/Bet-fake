@@ -80,3 +80,7 @@ Campeonatos, classificações, ranking, chat, bônus promocionais, transferênci
 ## Retomada
 
 Q56, stack, resumo final e backlog estão resolvidos. Implementar todos os tickets com TDD, revisão, PR e squash merge na main, um ticket por vez.
+
+## Esclarecimento pendente para apostas ao vivo
+
+Foi perguntado ao usuário como tratar o mercado de placar exato quando um time atinge 6 gols: todos os placares individuais oferecidos tornam-se impossíveis e “outro placar” fica garantido. Opções apresentadas: fechar esse mercado para novas apostas (recomendado) e liquidar as apostas anteriores no fim, ou manter “outro placar” com odd 1,00. Aguardar resposta antes de implementar esse caso no #7/#8; os demais fluxos continuam independentes.
