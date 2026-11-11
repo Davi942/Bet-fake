@@ -48,3 +48,9 @@ pois cria registros e interrompe brevemente seus serviços.
 O CI usa esse segundo comando após iniciar seu projeto isolado `bet-fake-ci` e
 remove seus volumes no encerramento do job. O resultado de cada suíte aparece
 nos checks do Pull Request.
+
+Os testes de carteira verificam centavos exatos, limites, extrato imutável,
+reenvios simultâneos da mesma operação, saques concorrentes, isolamento entre
+contas e recusa de acesso administrativo. O teste de persistência movimenta
+uma conta nova por HTTP e compara saldo, histórico e repetição da chave depois
+do seed e de um ciclo normal de parada/início, preservando a demonstração.

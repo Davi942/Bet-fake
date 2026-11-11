@@ -17,7 +17,9 @@ não precisa de serviços externos.
 O cadastro público cria apostadores, e o login abre a área pessoal ou administrativa
 conforme o perfil. A demonstração de partidas continua pública. Administradores
 podem gerenciar times, jogadores, titulares atuais e publicar partidas com odds.
-Operações de carteira/apostas chegam nos próximos tickets.
+Apostadores podem consultar a carteira e o extrato, depositar e sacar dinheiro
+fictício. Apostas chegam nos próximos tickets.
+Veja [operações, extrato e repetição segura de pedidos](docs/wallet.md).
 
 | Conta | E-mail | Senha inicial |
 | --- | --- | --- |

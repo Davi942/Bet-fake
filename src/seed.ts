@@ -3,6 +3,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { migrateAuthentication } from './auth-migration';
 import { hashPassword } from './password';
 import { migrateTeams } from './teams-migration';
+import { migrateWallet } from './wallet-migration';
 
 async function connectForStartup(pool: Pool) {
   const deadline = Date.now() + 30_000;
@@ -104,6 +105,7 @@ export async function initializeDatabase(pool: Pool) {
       }
     }
     await migrateTeams(client);
+    await migrateWallet(client);
     await client.query('COMMIT');
   } catch (error) {
     await client.query('ROLLBACK');

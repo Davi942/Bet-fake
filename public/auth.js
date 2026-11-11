@@ -3,6 +3,11 @@ const access = document.querySelector('#access');
 const personal = document.querySelector('#personal');
 const administration = document.querySelector('#administration');
 let sessionGeneration = 0;
+function formatMoneyCents(cents) {
+  const value = BigInt(cents);
+  const absolute = value < 0n ? -value : value;
+  return `${value < 0n ? '-' : ''}R$ ${new Intl.NumberFormat('pt-BR').format(absolute / 100n)},${String(absolute % 100n).padStart(2, '0')}`;
+}
 
 function clearSession() {
   sessionGeneration++;
@@ -38,7 +43,7 @@ async function api(path, body) {
 async function showSession(user) {
   const generation = ++sessionGeneration;
   const isBettor = user.role === 'bettor';
-  const details = await api(isBettor ? '/api/account' : '/api/admin/overview');
+  await api(isBettor ? '/api/account' : '/api/admin/overview');
   if (generation !== sessionGeneration) return;
   access.hidden = document.querySelector('#access-link').hidden = true;
   document.querySelector('#logout').hidden = false;
@@ -46,7 +51,6 @@ async function showSession(user) {
   administration.hidden = document.querySelector('#admin-link').hidden = isBettor;
   document.querySelector(isBettor ? '#current-user' : '#admin-user').textContent = `${user.displayName} (${user.email})`;
   document.dispatchEvent(new CustomEvent('session-changed', { detail: user }));
-  if (isBettor) document.querySelector('#balance').textContent = `Saldo disponível: ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(details.balanceCents / 100)}`;
 }
 
 for (const kind of ['login', 'signup']) {

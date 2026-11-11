@@ -28,6 +28,19 @@ test('normal stop and start preserve stored fixture dates and lineups and existi
   });
   assert.equal(login.status, 200);
   const cookie = login.headers.get('set-cookie');
+  const operation = { kind: 'deposit', amountCents: 1234, operationKey: randomUUID() };
+  const move = body => fetch(`${baseUrl}/api/wallet/operations`, {
+    method: 'POST', headers: { cookie, 'content-type': 'application/json', connection: 'close' }, body: JSON.stringify(body),
+  });
+  const deposited = await move(operation);
+  assert.equal(deposited.status, 201);
+  const depositEntry = await deposited.json();
+  assert.equal((await move({ kind: 'withdrawal', amountCents: 234, operationKey: randomUUID() })).status, 201);
+  const readWallet = () => fetch(`${baseUrl}/api/wallet`, { headers: { cookie, connection: 'close' } }).then(response => response.json());
+  const movedWallet = await readWallet();
+  assert.equal(movedWallet.balanceCents, 11000);
+  seed();
+  assert.deepEqual(await readWallet(), movedWallet);
   compose('down');
   compose('up', '-d', '--wait', '--wait-timeout', '120');
   const after = await fetch(`${baseUrl}/api/demo`).then(response => response.json());
@@ -35,5 +48,8 @@ test('normal stop and start preserve stored fixture dates and lineups and existi
   assert.deepEqual(seed(), accounts);
   const account = await fetch(`${baseUrl}/api/account`, { headers: { cookie } });
   assert.equal(account.status, 200);
-  assert.equal((await account.json()).balanceCents, 10000);
+  assert.equal((await account.json()).balanceCents, 11000);
+  assert.deepEqual(await readWallet(), movedWallet);
+  assert.deepEqual(await (await move(operation)).json(), depositEntry);
+  assert.deepEqual(await readWallet(), movedWallet);
 });
