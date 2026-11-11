@@ -5,8 +5,9 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'node:path';
 import { Database } from './database';
 import { initializeDatabase } from './seed';
-import { Auth, AuthController, Clock } from './auth';
+import { Auth, AuthController, Clock, PasswordVerification } from './auth';
 import { Teams, TeamsController } from './teams';
+import { Fixtures, FixturesController } from './fixtures';
 
 @Controller('api')
 class ApiController {
@@ -36,13 +37,14 @@ class ApiController {
   }
 }
 
-@Module({ controllers: [ApiController, AuthController, TeamsController], providers: [Database, Auth, Clock, Teams] })
+@Module({ controllers: [ApiController, AuthController, TeamsController, FixturesController], providers: [Database, Auth, Clock, PasswordVerification, Teams, Fixtures] })
 class AppModule {}
 
-export async function createApplication(options: { now?: () => number } = {}) {
+export async function createApplication(options: { now?: () => number; verifyPassword?: PasswordVerification['verify'] } = {}) {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   app.enableShutdownHooks();
   if (options.now) app.get(Clock).now = options.now;
+  if (options.verifyPassword) app.get(PasswordVerification).verify = options.verifyPassword;
   app.use('/api', (request: { method: string; protocol: string; headers: Record<string, string | undefined> }, response: { setHeader(name: string, value: string): void; status(code: number): { json(body: unknown): void } }, next: () => void) => {
     response.setHeader('Cache-Control', 'no-store');
     if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method)) {

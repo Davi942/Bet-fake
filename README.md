@@ -16,8 +16,8 @@ não precisa de serviços externos.
 
 O cadastro público cria apostadores, e o login abre a área pessoal ou administrativa
 conforme o perfil. A demonstração de partidas continua pública. Administradores
-podem gerenciar times, jogadores e titulares atuais. Partidas e operações de
-carteira/apostas chegam nos próximos tickets.
+podem gerenciar times, jogadores, titulares atuais e publicar partidas com odds.
+Operações de carteira/apostas chegam nos próximos tickets.
 
 | Conta | E-mail | Senha inicial |
 | --- | --- | --- |
@@ -77,16 +77,10 @@ npm run build
 npm start
 ```
 
-Com o Compose saudável, execute os testes de integração pela interface HTTP:
-
-```sh
-npm test
-```
-
-Os testes usam PostgreSQL real, verificam a demonstração e reiniciam a aplicação
-para conferir a persistência. `TEST_BASE_URL` permite alterar a URL se necessário.
-Não use a suíte em um ambiente compartilhado: ela interrompe brevemente o serviço.
-O CI executa os mesmos testes com um projeto Compose isolado.
+Execute `npm test` para criar um ambiente Docker isolado, verificar a interface
+HTTP com PostgreSQL real e remover apenas os dados temporários ao terminar.
+A demonstração local permanece disponível e seus dados são preservados.
+Veja [testes e execução no CI](docs/testing.md).
 
 Cadastro exige nome de exibição, e-mail único (sem distinguir maiúsculas ou espaços
 nas extremidades) e senha com pelo menos 8 caracteres. Somente apostadores podem
@@ -135,3 +129,33 @@ A migração aditiva preserva cadastros existentes e inicializa os titulares da
 demonstração apenas uma vez. Reiniciar ou executar o seed não repõe jogadores
 retirados da escalação. Nomes dos times e atributos dos jogadores das partidas
 publicadas ficam fixados, independentemente de edições nos cadastros atuais.
+
+Administradores podem publicar partidas na mesma área de administração e alterar
+somente a data/hora prevista depois da publicação. A lista pública inclui todas
+as partidas; abra "Ver escalações fixadas e mercados" para consultar os 22
+jogadores, os overalls e as odds. As datas exibidas usam America/Sao_Paulo;
+os formulários identificam o fuso local do navegador para a entrada de horários.
+
+| Interface HTTP de partidas | Acesso |
+| --- | --- |
+| `GET /api/fixtures`, `GET /api/fixtures/:id` | Público; atributos fixados e mercados |
+| `POST /api/fixtures` (`homeTeamId`, `awayTeamId`, `scheduledAt`) | Administrador; publica como agendada |
+| `PATCH /api/fixtures/:id` (`scheduledAt`) | Administrador; somente horário de partida agendada |
+
+A API exige data ISO 8601 com `Z` ou deslocamento explícito e devolve UTC.
+Publicação recusa times iguais, inexistentes, arquivados ou sem 11 titulares
+ativos válidos. O servidor fixa nomes e atributos em uma transação, coordenada
+com as alterações do elenco. Editar ou arquivar cadastros nunca recalcula os
+atributos nem as odds de uma partida já publicada.
+
+O modelo inicial considera gols independentes com distribuição de Poisson.
+Para a diferença `d = (overallMandante - overallVisitante) / 100`, as médias de
+gols são `1,35 × exp(d)` e `1,35 / exp(d)`. Times de mesma força têm a mesma
+chance de vitória, sem vantagem de mando; o modelo não consulta apostas nem
+finanças. A simulação futura deverá usar as mesmas médias. Os mercados são
+1X2 (3 seleções) e placar exato (36 placares de 0–0 a 5–5 e "outro placar",
+quando pelo menos um time marca 6+). Para probabilidade `p`, a odd publicada
+é `1 / (1,05 × p)`, arredondada para duas casas decimais; a soma das
+probabilidades implícitas antes desse arredondamento é 1,05 em cada mercado.
+Este ticket disponibiliza consultas e odds pré-jogo; aceitar apostas, iniciar
+a simulação e recalcular odds ao vivo pertencem aos próximos tickets.

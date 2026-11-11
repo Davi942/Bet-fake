@@ -53,6 +53,7 @@
     if(admin) article.append(button('Gerenciar '+team.name,async()=>{selected=team.id;}));root.append(article);
    }
    if(admin) showEditor(teams.find(team=>team.id===selected));
+   document.dispatchEvent(new Event('teams-changed'));
   }catch(error) {status.textContent=error.message;}
  }
  document.addEventListener('session-changed',event=>{

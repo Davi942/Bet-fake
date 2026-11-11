@@ -13,6 +13,9 @@ interface Claims { sub: string; jti: string; iat: number; exp: number; }
 @Injectable()
 export class Clock { now = () => Date.now(); }
 
+@Injectable()
+export class PasswordVerification { verify = verifyPassword; }
+
 function input(body: unknown): Record<string, unknown> {
   if (!body || typeof body !== 'object' || Array.isArray(body)) throw new BadRequestException('Dados inválidos.');
   return body as Record<string, unknown>;
@@ -26,7 +29,7 @@ function publicUser(user: User) { return { displayName: user.display_name, email
 
 @Injectable()
 export class Auth {
-  constructor(private readonly db: Database, private readonly clock: Clock) {}
+  constructor(private readonly db: Database, private readonly clock: Clock, private readonly passwords: PasswordVerification) {}
 
   async signup(raw: unknown) {
     const body = input(raw);
@@ -69,28 +72,35 @@ export class Auth {
   }
 
   private async checkCredentials(email: string, password: string, response: Response): Promise<User> {
+    const blocked = (until: number, now: number) => {
+      const seconds = Math.ceil((until - now) / 1000);
+      response.setHeader('Retry-After', String(seconds));
+      return new HttpException({ message: 'Conta bloqueada por 15 minutos após cinco tentativas incorretas.', retryAfterSeconds: seconds }, 429);
+    };
+    const snapshot: LoginUser | undefined = (await this.db.pool.query('SELECT * FROM users WHERE lower(btrim(email))=$1', [email])).rows[0];
+    if (!snapshot) throw new UnauthorizedException('E-mail ou senha incorretos.');
+    const started = this.clock.now();
+    if (snapshot.locked_until && snapshot.locked_until.getTime() > started) throw blocked(snapshot.locked_until.getTime(), started);
+    // Crypto can be slow. Do not hold a database connection or account lock while it runs.
+    const matches = await this.passwords.verify(password, snapshot.password_hash);
     const client = await this.db.pool.connect();
     let transaction = false;
     try {
       await client.query('BEGIN');
       transaction = true;
-      // Lock this account so concurrent attempts cannot bypass the five-attempt limit.
+      // Recheck current account state and serialize only the short counter update.
       const result = await client.query('SELECT * FROM users WHERE lower(btrim(email))=$1 FOR UPDATE', [email]);
       const user: LoginUser | undefined = result.rows[0];
       const now = this.clock.now();
       let failure: UnauthorizedException | HttpException | undefined;
-      const blocked = (until: number) => {
-        const seconds = Math.ceil((until - now) / 1000);
-        response.setHeader('Retry-After', String(seconds));
-        return new HttpException({ message: 'Conta bloqueada por 15 minutos após cinco tentativas incorretas.', retryAfterSeconds: seconds }, 429);
-      };
       if (!user) failure = new UnauthorizedException('E-mail ou senha incorretos.');
-      else if (user.locked_until && user.locked_until.getTime() > now) failure = blocked(user.locked_until.getTime());
-      else if (!await verifyPassword(password, user.password_hash)) {
+      else if (user.locked_until && user.locked_until.getTime() > now) failure = blocked(user.locked_until.getTime(), now);
+      else if (user.password_hash !== snapshot.password_hash) failure = new UnauthorizedException('E-mail ou senha incorretos.');
+      else if (!matches) {
         const attempts = (user.locked_until ? 0 : user.failed_login_attempts) + 1;
         const until = attempts >= 5 ? new Date(now + 15 * 60 * 1000) : null;
         await client.query('UPDATE users SET failed_login_attempts=$2,locked_until=$3 WHERE id=$1', [user.id, attempts, until]);
-        failure = until ? blocked(until.getTime()) : new UnauthorizedException('E-mail ou senha incorretos.');
+        failure = until ? blocked(until.getTime(), now) : new UnauthorizedException('E-mail ou senha incorretos.');
       } else await client.query('UPDATE users SET failed_login_attempts=0,locked_until=NULL WHERE id=$1', [user.id]);
       await client.query('COMMIT');
       transaction = false;

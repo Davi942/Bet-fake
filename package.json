@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "start": "node dist/main.js",
     "seed": "node dist/seed.js",
-    "test": "node --test --test-concurrency=1 test/*.test.mjs"
+    "test": "node scripts/test-isolated.mjs",
+    "test:http": "node --test --test-concurrency=1 test/*.test.mjs"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.0",
