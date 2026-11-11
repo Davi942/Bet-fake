@@ -41,6 +41,13 @@ verificação real de senha com uma demora controlada na fronteira de criptograf
 O teste envia cinco tentativas incorretas simultâneas e observa as respostas HTTP
 e o bloqueio posterior, sem consultar contadores privados para fazer as asserções.
 
+Uma segunda regressão de login passa por um proxy TCP com 650ms de atraso nas
+respostas SQL, habilitado somente após inicializar e cadastrar a conta. Cinco
+erros simultâneos precisam produzir quatro 401 e um 429, sem respostas 500 nem
+aumentar os prazos das consultas. A contagem usa uma atualização condicional
+atômica em autocommit, evitando manter o bloqueio da conta entre respostas de
+rede separadas; as asserções continuam restritas às respostas HTTP.
+
 ## Executar contra um ambiente já existente
 
 ```sh
