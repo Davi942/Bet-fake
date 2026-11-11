@@ -27,6 +27,15 @@ proxy TCP que deixa a primeira conexão ao PostgreSQL sem resposta. Ela observa
 pela saúde HTTP a recuperação após esse timeout transitório, mantendo a demora
 de conexão controlada fora do código de produção.
 
+Outra regressão passa a autenticação PostgreSQL normalmente e atrasa em seis
+segundos a resposta à primeira mensagem SQL pelo proxy, sem examinar o texto
+da consulta. O ponto de entrada de produção precisa concluir a inicialização
+e responder 200. Um segundo atraso de seis segundos na saúde precisa retornar
+503 e depois recuperar: inicialização usa um pool temporário com orçamento
+de 30 segundos por consulta, enquanto as consultas interativas mantêm cinco
+segundos. A conexão inicial mantém timeout de três segundos e repetição limitada
+a 30 segundos; transações e comandos SQL nunca são repetidos automaticamente.
+
 Para verificar concorrência no login, outra aplicação independente usa a
 verificação real de senha com uma demora controlada na fronteira de criptografia.
 O teste envia cinco tentativas incorretas simultâneas e observa as respostas HTTP
