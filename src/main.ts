@@ -10,6 +10,10 @@ import { Teams, TeamsController } from './teams';
 import { Fixtures, FixturesController } from './fixtures';
 import { Wallet, WalletController } from './wallet';
 import { Bets, BetsController } from './bets';
+import { Simulation } from './simulation';
+import { SimulationBoundary, SimulationOptions } from './simulation-boundary';
+import { LiveGateway } from './live-gateway';
+import { WsAdapter } from '@nestjs/platform-ws';
 
 @Controller('api')
 class ApiController {
@@ -39,14 +43,16 @@ class ApiController {
   }
 }
 
-@Module({ controllers: [ApiController, AuthController, TeamsController, FixturesController, WalletController, BetsController], providers: [Database, Auth, Clock, PasswordVerification, Teams, Fixtures, Wallet, Bets] })
+@Module({ controllers: [ApiController, AuthController, TeamsController, FixturesController, WalletController, BetsController], providers: [Database, Auth, Clock, PasswordVerification, Teams, Fixtures, Wallet, Bets, SimulationBoundary, Simulation, LiveGateway] })
 class AppModule {}
 
-export async function createApplication(options: { now?: () => number; verifyPassword?: PasswordVerification['verify'] } = {}) {
+export async function createApplication(options: { now?: () => number; verifyPassword?: PasswordVerification['verify']; simulation?:SimulationOptions } = {}) {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  app.useWebSocketAdapter(new WsAdapter(app));
   app.enableShutdownHooks();
   if (options.now) app.get(Clock).now = options.now;
   if (options.verifyPassword) app.get(PasswordVerification).verify = options.verifyPassword;
+  Object.assign(app.get(SimulationBoundary),options.simulation??{});
   app.use('/api', (request: { method: string; protocol: string; headers: Record<string, string | undefined> }, response: { setHeader(name: string, value: string): void; status(code: number): { json(body: unknown): void } }, next: () => void) => {
     response.setHeader('Cache-Control', 'no-store');
     if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method)) {

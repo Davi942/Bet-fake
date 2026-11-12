@@ -17,6 +17,9 @@ Compromisso de um valor fictício com um resultado de uma partida, à odd fixada
 **Odd**:
 Cotação associada a um resultado possível de uma partida; pode variar para novas apostas, enquanto a cotação de uma aposta aceita permanece fixa.
 
+**Odd mínima**:
+Piso da cotação que pode ser oferecida para uma aposta em um resultado ainda possível.
+
 **Aposta ao vivo**:
 Aposta aceita durante uma partida em andamento, à cotação vigente no momento da aceitação.
 
@@ -105,7 +108,7 @@ Diferença entre os valores apostados nas partidas encerradas e os retornos pago
 Conjunto de resultados alternativos sobre os quais se pode apostar: vitória/empate/derrota ou placares exatos, incluindo outro placar.
 
 **Margem da casa**:
-Margem de 5% incorporada ao cálculo das odds de cada mercado, sem desconto adicional sobre o retorno da aposta vencedora.
+Margem teórica de 5% incorporada ao cálculo das odds de cada mercado, sem desconto adicional sobre o retorno da aposta vencedora.
 
 **Liquidação das apostas**:
 Resolução das apostas pelo resultado final da partida, com identificação das ganhas e perdidas e crédito automático de cada retorno devido uma única vez.

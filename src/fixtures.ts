@@ -1,8 +1,9 @@
-import { BadRequestException, Body, Controller, Get, Injectable, NotFoundException, Param, Patch, Post, Req } from '@nestjs/common';
+import { BadRequestException, Body, ConflictException, Controller, Get, Injectable, NotFoundException, Param, Patch, Post, Req } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { Database } from './database';
 import { Auth } from './auth';
-import { pregameMarkets } from './markets';
+import { goalRates, liveMarkets, pregameMarkets } from './markets';
+import { MATCH_DURATION_MS, MATCH_MINUTES, SimulationBoundary } from './simulation-boundary';
 type Request={headers:Record<string,string|undefined>};
 function input(raw:unknown) {
  if(!raw || typeof raw!=='object'||Array.isArray(raw)) throw new BadRequestException('Dados inválidos.');
@@ -18,18 +19,42 @@ function scheduledDate(value:unknown) {
 }
 @Injectable()
 export class Fixtures {
- constructor(private readonly db:Database) {}
+ constructor(private readonly db:Database,private readonly simulation:SimulationBoundary) {}
  async list() {
   const rows=(await this.db.pool.query('SELECT id FROM fixtures ORDER BY scheduled_at,id')).rows;
   return Promise.all(rows.map(row=>this.detail(row.id)));
  }
  async detail(id:string) {
-  const fixture=(await this.db.pool.query(`SELECT id,home_team_id AS "homeTeamId",away_team_id AS "awayTeamId",home_team_name AS "homeTeamName",away_team_name AS "awayTeamName",scheduled_at AS "scheduledAt",status FROM fixtures WHERE id=$1`,[id])).rows[0];
+  const row=(await this.db.pool.query(`SELECT id,home_team_id AS "homeTeamId",away_team_id AS "awayTeamId",home_team_name AS "homeTeamName",away_team_name AS "awayTeamName",scheduled_at AS "scheduledAt",status,elapsed_ms AS "elapsedMs",home_score AS home,away_score AS away,events FROM fixtures WHERE id=$1`,[id])).rows[0];
+  const fixture=row;
   if(!fixture) throw new NotFoundException('Partida não encontrada.');
   const lineups=(await this.db.pool.query(`SELECT team_id AS "teamId",player_id AS "playerId",name,position,overall FROM fixture_lineups WHERE fixture_id=$1 ORDER BY team_id,player_id`,[id])).rows;
   const overall=(teamId:string)=>lineups.filter(p=>p.teamId===teamId).reduce((sum,p)=>sum+p.overall,0)/11;
   const homeOverall=overall(fixture.homeTeamId),awayOverall=overall(fixture.awayTeamId);
-  return {...fixture,lineups,homeOverall,awayOverall,markets:pregameMarkets(homeOverall,awayOverall)};
+  const {home,away,...published}=fixture;
+  const markets=fixture.status==='scheduled'?pregameMarkets(homeOverall,awayOverall):liveMarkets(homeOverall,awayOverall,home,away,(MATCH_DURATION_MS-fixture.elapsedMs)/MATCH_DURATION_MS);
+  if(['finished','cancelled'].includes(fixture.status))for(const market of Object.values(markets)){market.open=false;market.selections.forEach(selection=>{selection.available=false;});}
+  return {...published,lineups,homeOverall,awayOverall,minute:Math.floor(fixture.elapsedMs/MATCH_DURATION_MS*MATCH_MINUTES),score:{home,away},markets};
+ }
+ async start(id:string,raw:unknown) {
+  if(Object.keys(input(raw)).length) throw new BadRequestException('O início não aceita controles de resultado ou odds.');
+  const client=await this.db.pool.connect();
+  try {
+   await client.query('BEGIN');
+   // Serialize capacity and club checks, then take the fixture lock before any future wallet locks.
+   await client.query('SELECT pg_advisory_xact_lock(942007)');
+   const fixture=(await client.query('SELECT * FROM fixtures WHERE id=$1 FOR UPDATE',[id])).rows[0];
+   if(!fixture) throw new NotFoundException('Partida não encontrada.');
+   if(fixture.status!=='scheduled') throw new ConflictException('Somente partidas agendadas podem iniciar.');
+   const live=(await client.query("SELECT home_team_id,away_team_id FROM fixtures WHERE status='in_progress'")).rows;
+   if(live.length>=5||live.some(f=>[f.home_team_id,f.away_team_id].some(team=>team===fixture.home_team_id||team===fixture.away_team_id))) throw new ConflictException('Limite de cinco partidas ou time já em campo.');
+   const strengths=(await client.query('SELECT team_id,avg(overall)::float8 AS overall FROM fixture_lineups WHERE fixture_id=$1 GROUP BY team_id',[id])).rows;
+   const rates=goalRates(strengths.find(s=>s.team_id===fixture.home_team_id).overall,strengths.find(s=>s.team_id===fixture.away_team_id).overall);
+   const timeline=this.simulation.timeline(rates);
+   await client.query(`UPDATE fixtures SET status='in_progress',events='[{"type":"kickoff","minute":0}]',goal_plan=$2 WHERE id=$1`,[id,JSON.stringify(timeline)]);
+   await client.query('COMMIT');
+  }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
+  return this.detail(id);
  }
  async publish(raw:unknown) {
   const body=input(raw),scheduledAt=scheduledDate(body.scheduledAt);
@@ -63,5 +88,6 @@ export class FixturesController {
  @Get() list(){return this.fixtures.list();}
  @Get(':id') detail(@Param('id') id:string){return this.fixtures.detail(id);}
  @Post() async publish(@Req() request:Request,@Body() raw:unknown){await this.auth.authenticate(request,'admin');return this.fixtures.publish(raw);}
+ @Post(':id/start') async start(@Req() request:Request,@Param('id') id:string,@Body() raw:unknown){await this.auth.authenticate(request,'admin');return this.fixtures.start(id,raw);}
  @Patch(':id') async reschedule(@Req() request:Request,@Param('id') id:string,@Body() raw:unknown){await this.auth.authenticate(request,'admin');return this.fixtures.reschedule(id,raw);}
 }

@@ -115,6 +115,11 @@ export async function initializeDatabase(pool: Pool) {
     await migrateTeams(client);
     await migrateWallet(client);
     await migrateBets(client);
+    await client.query(`ALTER TABLE fixtures ADD COLUMN IF NOT EXISTS elapsed_ms integer NOT NULL DEFAULT 0;
+      ALTER TABLE fixtures ADD COLUMN IF NOT EXISTS home_score integer NOT NULL DEFAULT 0;
+      ALTER TABLE fixtures ADD COLUMN IF NOT EXISTS away_score integer NOT NULL DEFAULT 0;
+      ALTER TABLE fixtures ADD COLUMN IF NOT EXISTS events jsonb NOT NULL DEFAULT '[]';
+      ALTER TABLE fixtures ADD COLUMN IF NOT EXISTS goal_plan jsonb;`);
     await client.query('COMMIT');
   } catch (error) {
     try { await client.query('ROLLBACK'); }
