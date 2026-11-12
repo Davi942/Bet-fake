@@ -1,5 +1,7 @@
 # Testes de integração
 
+Os testes de apostas verificam respostas HTTP, carteira, extrato e histórico próprio. Para preparar os status ainda sem operação pública no #6, o teste publica uma partida nova pela API administrativa e altera somente seu status no PostgreSQL descartável; todas as asserções permanecem HTTP. Substituir essa preparação pelos endpoints públicos de início/cancelamento ao implementar #7/#10. Não há rotas de teste no produto nem asserções privadas de banco.
+
 Requisitos de desenvolvimento: Node.js 26, npm, Docker e Docker Compose disponíveis.
 
 ```sh
