@@ -19,3 +19,4 @@ input[type=checkbox] { display: inline-block; width: auto; margin-right: .5rem; 
 table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
 th, td { padding: .4rem; text-align: left; border-bottom: 1px solid #47715c; }
 td:last-child, th:last-child { text-align: right; white-space: nowrap; }
+.table-scroll { overflow-x: auto; }

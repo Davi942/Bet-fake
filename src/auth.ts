@@ -83,33 +83,25 @@ export class Auth {
     if (snapshot.locked_until && snapshot.locked_until.getTime() > started) throw blocked(snapshot.locked_until.getTime(), started);
     // Crypto can be slow. Do not hold a database connection or account lock while it runs.
     const matches = await this.passwords.verify(password, snapshot.password_hash);
-    const client = await this.db.pool.connect();
-    let transaction = false;
-    try {
-      await client.query('BEGIN');
-      transaction = true;
-      // Recheck current account state and serialize only the short counter update.
-      const result = await client.query('SELECT * FROM users WHERE lower(btrim(email))=$1 FOR UPDATE', [email]);
-      const user: LoginUser | undefined = result.rows[0];
-      const now = this.clock.now();
-      let failure: UnauthorizedException | HttpException | undefined;
-      if (!user) failure = new UnauthorizedException('E-mail ou senha incorretos.');
-      else if (user.locked_until && user.locked_until.getTime() > now) failure = blocked(user.locked_until.getTime(), now);
-      else if (user.password_hash !== snapshot.password_hash) failure = new UnauthorizedException('E-mail ou senha incorretos.');
-      else if (!matches) {
-        const attempts = (user.locked_until ? 0 : user.failed_login_attempts) + 1;
-        const until = attempts >= 5 ? new Date(now + 15 * 60 * 1000) : null;
-        await client.query('UPDATE users SET failed_login_attempts=$2,locked_until=$3 WHERE id=$1', [user.id, attempts, until]);
-        failure = until ? blocked(until.getTime(), now) : new UnauthorizedException('E-mail ou senha incorretos.');
-      } else await client.query('UPDATE users SET failed_login_attempts=0,locked_until=NULL WHERE id=$1', [user.id]);
-      await client.query('COMMIT');
-      transaction = false;
-      if (failure) throw failure;
-      return user!;
-    } catch (error) {
-      if (transaction) await client.query('ROLLBACK');
-      throw error;
-    } finally { client.release(); }
+    const now = this.clock.now();
+    // Autocommit releases the account lock before the response crosses the
+    // network. PostgreSQL rechecks the hash/lock predicate after concurrent writes.
+    const result = await this.db.pool.query(`UPDATE users SET
+      failed_login_attempts = CASE WHEN $3::boolean THEN 0 WHEN locked_until IS NOT NULL THEN 1 ELSE failed_login_attempts + 1 END,
+      locked_until = CASE WHEN $3::boolean THEN NULL
+        WHEN (CASE WHEN locked_until IS NOT NULL THEN 0 ELSE failed_login_attempts END) + 1 >= 5 THEN $5::timestamptz
+        ELSE NULL END
+      WHERE id=$1 AND password_hash=$2 AND (locked_until IS NULL OR locked_until <= $4::timestamptz)
+      RETURNING *`, [snapshot.id, snapshot.password_hash, matches, new Date(now), new Date(now + 15 * 60 * 1000)]);
+    const user: LoginUser | undefined = result.rows[0];
+    if (user) {
+      if (user.locked_until) throw blocked(user.locked_until.getTime(), now);
+      if (!matches) throw new UnauthorizedException('E-mail ou senha incorretos.');
+      return user;
+    }
+    const latest: LoginUser | undefined = (await this.db.pool.query('SELECT * FROM users WHERE id=$1', [snapshot.id])).rows[0];
+    if (latest?.locked_until && latest.locked_until.getTime() > now) throw blocked(latest.locked_until.getTime(), now);
+    throw new UnauthorizedException('E-mail ou senha incorretos.');
   }
 
   async authenticate(request: Request, role?: User['role']): Promise<{ user: User; claims: Claims }> {

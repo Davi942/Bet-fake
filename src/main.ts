@@ -4,10 +4,11 @@ import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'node:path';
 import { Database } from './database';
-import { initializeDatabase } from './seed';
+import { createInitializationPool, initializeDatabase } from './seed';
 import { Auth, AuthController, Clock, PasswordVerification } from './auth';
 import { Teams, TeamsController } from './teams';
 import { Fixtures, FixturesController } from './fixtures';
+import { Wallet, WalletController } from './wallet';
 
 @Controller('api')
 class ApiController {
@@ -37,7 +38,7 @@ class ApiController {
   }
 }
 
-@Module({ controllers: [ApiController, AuthController, TeamsController, FixturesController], providers: [Database, Auth, Clock, PasswordVerification, Teams, Fixtures] })
+@Module({ controllers: [ApiController, AuthController, TeamsController, FixturesController, WalletController], providers: [Database, Auth, Clock, PasswordVerification, Teams, Fixtures, Wallet] })
 class AppModule {}
 
 export async function createApplication(options: { now?: () => number; verifyPassword?: PasswordVerification['verify'] } = {}) {
@@ -57,7 +58,9 @@ export async function createApplication(options: { now?: () => number; verifyPas
     }
     next();
   });
-  await initializeDatabase(app.get(Database).pool);
+  const initialization = createInitializationPool();
+  try { await initializeDatabase(initialization); }
+  finally { await initialization.end(); }
   app.useStaticAssets(join(process.cwd(), 'public'));
   return app;
 }

@@ -3,6 +3,13 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { migrateAuthentication } from './auth-migration';
 import { hashPassword } from './password';
 import { migrateTeams } from './teams-migration';
+import { migrateWallet } from './wallet-migration';
+
+// Schema/seed work can wait longer than an interactive request. Close this
+// short-lived pool after initialization; runtime queries keep their 5s budget.
+export function createInitializationPool() {
+  return new Pool({ connectionTimeoutMillis: 3000, query_timeout: 30_000, max: 1 });
+}
 
 async function connectForStartup(pool: Pool) {
   const deadline = Date.now() + 30_000;
@@ -26,6 +33,7 @@ async function connectForStartup(pool: Pool) {
 // One transaction prevents a partially seeded demonstration after an interruption.
 export async function initializeDatabase(pool: Pool) {
   const client = await connectForStartup(pool);
+  let destroyClient = false;
   try {
     await client.query('BEGIN');
     await client.query('SELECT pg_advisory_xact_lock(942001)');
@@ -104,18 +112,20 @@ export async function initializeDatabase(pool: Pool) {
       }
     }
     await migrateTeams(client);
+    await migrateWallet(client);
     await client.query('COMMIT');
   } catch (error) {
-    await client.query('ROLLBACK');
+    try { await client.query('ROLLBACK'); }
+    catch { destroyClient = true; }
     throw error;
   } finally {
-    client.release();
+    client.release(destroyClient);
   }
 }
 
 // Supported local maintenance command; never returns password hashes.
 async function seedCommand() {
-  const pool = new Pool();
+  const pool = createInitializationPool();
   try {
     await initializeDatabase(pool);
     const accounts = await pool.query(`SELECT u.id,u.email,u.role,u.created_at,w.balance_cents

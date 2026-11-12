@@ -27,10 +27,26 @@ proxy TCP que deixa a primeira conexão ao PostgreSQL sem resposta. Ela observa
 pela saúde HTTP a recuperação após esse timeout transitório, mantendo a demora
 de conexão controlada fora do código de produção.
 
+Outra regressão passa a autenticação PostgreSQL normalmente e atrasa em seis
+segundos a resposta à primeira mensagem SQL pelo proxy, sem examinar o texto
+da consulta. O ponto de entrada de produção precisa concluir a inicialização
+e responder 200. Um segundo atraso de seis segundos na saúde precisa retornar
+503 e depois recuperar: inicialização usa um pool temporário com orçamento
+de 30 segundos por consulta, enquanto as consultas interativas mantêm cinco
+segundos. A conexão inicial mantém timeout de três segundos e repetição limitada
+a 30 segundos; transações e comandos SQL nunca são repetidos automaticamente.
+
 Para verificar concorrência no login, outra aplicação independente usa a
 verificação real de senha com uma demora controlada na fronteira de criptografia.
 O teste envia cinco tentativas incorretas simultâneas e observa as respostas HTTP
 e o bloqueio posterior, sem consultar contadores privados para fazer as asserções.
+
+Uma segunda regressão de login passa por um proxy TCP com 650ms de atraso nas
+respostas SQL, habilitado somente após inicializar e cadastrar a conta. Cinco
+erros simultâneos precisam produzir quatro 401 e um 429, sem respostas 500 nem
+aumentar os prazos das consultas. A contagem usa uma atualização condicional
+atômica em autocommit, evitando manter o bloqueio da conta entre respostas de
+rede separadas; as asserções continuam restritas às respostas HTTP.
 
 ## Executar contra um ambiente já existente
 
@@ -48,3 +64,9 @@ pois cria registros e interrompe brevemente seus serviços.
 O CI usa esse segundo comando após iniciar seu projeto isolado `bet-fake-ci` e
 remove seus volumes no encerramento do job. O resultado de cada suíte aparece
 nos checks do Pull Request.
+
+Os testes de carteira verificam centavos exatos, limites, extrato imutável,
+reenvios simultâneos da mesma operação, saques concorrentes, isolamento entre
+contas e recusa de acesso administrativo. O teste de persistência movimenta
+uma conta nova por HTTP e compara saldo, histórico e repetição da chave depois
+do seed e de um ciclo normal de parada/início, preservando a demonstração.
