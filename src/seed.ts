@@ -4,6 +4,7 @@ import { migrateAuthentication } from './auth-migration';
 import { hashPassword } from './password';
 import { migrateTeams } from './teams-migration';
 import { migrateWallet } from './wallet-migration';
+import { migrateBets } from './bets-migration';
 
 // Schema/seed work can wait longer than an interactive request. Close this
 // short-lived pool after initialization; runtime queries keep their 5s budget.
@@ -113,6 +114,7 @@ export async function initializeDatabase(pool: Pool) {
     }
     await migrateTeams(client);
     await migrateWallet(client);
+    await migrateBets(client);
     await client.query('COMMIT');
   } catch (error) {
     try { await client.query('ROLLBACK'); }

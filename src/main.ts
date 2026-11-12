@@ -9,6 +9,7 @@ import { Auth, AuthController, Clock, PasswordVerification } from './auth';
 import { Teams, TeamsController } from './teams';
 import { Fixtures, FixturesController } from './fixtures';
 import { Wallet, WalletController } from './wallet';
+import { Bets, BetsController } from './bets';
 
 @Controller('api')
 class ApiController {
@@ -38,7 +39,7 @@ class ApiController {
   }
 }
 
-@Module({ controllers: [ApiController, AuthController, TeamsController, FixturesController, WalletController], providers: [Database, Auth, Clock, PasswordVerification, Teams, Fixtures, Wallet] })
+@Module({ controllers: [ApiController, AuthController, TeamsController, FixturesController, WalletController, BetsController], providers: [Database, Auth, Clock, PasswordVerification, Teams, Fixtures, Wallet, Bets] })
 class AppModule {}
 
 export async function createApplication(options: { now?: () => number; verifyPassword?: PasswordVerification['verify'] } = {}) {

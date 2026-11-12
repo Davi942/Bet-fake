@@ -16,6 +16,11 @@ function renderWallet(wallet) {
     const row = document.createElement('tr');
     const values = [new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', dateStyle: 'short', timeStyle: 'medium' }).format(new Date(entry.createdAt)), entryLabels[entry.kind] ?? entry.kind, money(entry.amountCents), money(entry.balanceAfterCents)];
     for (const value of values) { const cell = document.createElement('td'); cell.textContent = value; row.append(cell); }
+    if (entry.betId) {
+      const link = document.createElement('a'); link.href = `#bet-${entry.betId}`; link.textContent = 'Ver aposta';
+      const fixture = document.createElement('a'); fixture.href = `#fixture-${entry.fixtureId}`; fixture.textContent = 'Ver partida';
+      row.children[1].append(document.createElement('br'), link, document.createTextNode(' · '), fixture);
+    }
     return row;
   }));
 }
@@ -44,6 +49,7 @@ document.addEventListener('session-changed', event => {
   if (owner) loadWallet();
 });
 document.querySelector('#wallet-refresh').addEventListener('click', loadWallet);
+document.addEventListener('bet-accepted', loadWallet);
 
 async function walletApi(path, body) {
   const session = walletSession;

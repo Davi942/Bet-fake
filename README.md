@@ -18,8 +18,8 @@ O cadastro público cria apostadores, e o login abre a área pessoal ou administ
 conforme o perfil. A demonstração de partidas continua pública. Administradores
 podem gerenciar times, jogadores, titulares atuais e publicar partidas com odds.
 Apostadores podem consultar a carteira e o extrato, depositar e sacar dinheiro
-fictício. Apostas chegam nos próximos tickets.
-Veja [operações, extrato e repetição segura de pedidos](docs/wallet.md).
+fictício, fazer apostas simples pré-jogo e consultar “Minhas apostas”.
+Veja [operações e extrato](docs/wallet.md) e [apostas, limites e repetição segura](docs/bets.md).
 
 | Conta | E-mail | Senha inicial |
 | --- | --- | --- |
@@ -159,5 +159,5 @@ finanças. A simulação futura deverá usar as mesmas médias. Os mercados são
 quando pelo menos um time marca 6+). Para probabilidade `p`, a odd publicada
 é `1 / (1,05 × p)`, arredondada para duas casas decimais; a soma das
 probabilidades implícitas antes desse arredondamento é 1,05 em cada mercado.
-Este ticket disponibiliza consultas e odds pré-jogo; aceitar apostas, iniciar
-a simulação e recalcular odds ao vivo pertencem aos próximos tickets.
+Apostas simples pré-jogo fixam a odd aceita e descontam o valor uma única vez.
+Iniciar a simulação, recalcular odds ao vivo e liquidar apostas pertencem aos próximos tickets.
