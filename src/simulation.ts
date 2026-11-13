@@ -44,21 +44,24 @@ export class Simulation implements OnApplicationBootstrap,OnModuleDestroy {
   const client=this.leader;
   const now=this.boundary.now(),delta=Math.max(0,Math.min(1000,Math.floor(now-(this.previous??now))));
   this.previous=now;
-  const ids=(await client.query("SELECT id FROM fixtures WHERE status='in_progress' AND goal_plan IS NOT NULL ORDER BY id")).rows;
-  for(const {id} of ids) {
-   try {
-    await client.query('BEGIN');
-    const fixture=(await client.query('SELECT * FROM fixtures WHERE id=$1 FOR UPDATE',[id])).rows[0];
-    if(fixture.status==='in_progress') {
+  try {
+   await client.query('BEGIN');
+   // One durable flush per cycle avoids multiplying WAL sync latency by the
+   // number of live games. Lock fixture IDs in order before any future wallets.
+   const fixtures=(await client.query("SELECT * FROM fixtures WHERE status='in_progress' AND goal_plan IS NOT NULL ORDER BY id FOR UPDATE")).rows;
+   const nextSeen=new Set<string>();
+   for(const fixture of fixtures) {
+     const id=fixture.id;
      const elapsed=Math.min(MATCH_DURATION_MS,fixture.elapsed_ms+(this.seen.has(id)?delta:0));
      const goals=(fixture.goal_plan as Goal[]).filter(goal=>goal.at<=elapsed);
      const events:MatchEvent[]=[{type:'kickoff',minute:0},...goals.map(goal=>({type:'goal' as const,minute:Math.ceil(goal.at/MATCH_DURATION_MS*MATCH_MINUTES),teamId:goal.side==='home'?fixture.home_team_id:fixture.away_team_id}))];
      const status=elapsed===MATCH_DURATION_MS?'finished':'in_progress';
      if(status==='finished')events.push({type:'end',minute:MATCH_MINUTES});
      await client.query('UPDATE fixtures SET elapsed_ms=$2,home_score=$3,away_score=$4,events=$5,status=$6 WHERE id=$1',[id,elapsed,goals.filter(g=>g.side==='home').length,goals.filter(g=>g.side==='away').length,JSON.stringify(events),status]);
-    }
-    await client.query('COMMIT');this.seen.add(id);
-   }catch(error){try{await client.query('ROLLBACK');}catch{}throw error;}
-  }
+     if(status==='in_progress')nextSeen.add(id);
+   }
+   await client.query('COMMIT');
+   this.seen=nextSeen;
+  }catch(error){try{await client.query('ROLLBACK');}catch{}throw error;}
  }
 }
