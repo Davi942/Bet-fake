@@ -106,8 +106,10 @@ test('live guaranteed other score stays open at 1.00 and accepted pregame bets k
   assert.equal(fixture.markets.exactScore.open,true);assert.equal(other.available,true);assert.equal(other.probability,1);assert.equal(other.odd,'1.00');
   assert.ok(fixture.markets.exactScore.selections.filter(s=>s.key!=='other').every(s=>!s.available&&s.probability===0&&s.odd===null));
   const wallet=await (await call('/api/wallet',undefined,bettor)).json();
-  assert.equal((await call('/api/bets',{...body,operationKey:require('node:crypto').randomUUID()},bettor)).status,400);
+  assert.equal((await call('/api/bets',{...body,operationKey:require('node:crypto').randomUUID()},bettor)).status,409);
   assert.deepEqual(await (await call('/api/wallet',undefined,bettor)).json(),wallet);
+  const live=await call('/api/bets',{...body,market:'exactScore',selection:'other',confirmedOdd:'1.00',operationKey:require('node:crypto').randomUUID()},bettor);
+  assert.equal(live.status,201);assert.equal((await live.json()).acceptedOdd,'1.00');
   assert.deepEqual(await (await call('/api/bets',body,bettor)).json(),accepted);
   console.log('guaranteed-other-ok');
  }finally{await app.close();}

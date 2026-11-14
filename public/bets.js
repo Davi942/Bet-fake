@@ -5,9 +5,17 @@
  const labels={pending:'Pendente',won:'Ganha',lost:'Perdida',refunded:'Estornada'};
  const node=(tag,text)=>{const element=document.createElement(tag);if(text!==undefined)element.textContent=text;return element;};
  const option=(value,text)=>{const element=node('option',text);element.value=value;return element;};
+ const bettable=fixture=>['scheduled','in_progress'].includes(fixture?.status);
+ const availableFixtures=()=>fixtures.filter(bettable);
+ function renderFixtureOptions() {
+  const selected=fixtureField.value;
+  fixtureField.replaceChildren(option('','Selecione uma partida'),...availableFixtures().map(f=>option(f.id,`${f.homeTeamName} × ${f.awayTeamName}`)));
+  if(availableFixtures().some(f=>f.id===selected))fixtureField.value=selected;
+  selections();
+ }
  function quote() {
   const fixture=fixtures.find(f=>f.id===fixtureField.value),market=fixture?.markets[marketField.value];
-  if(!['scheduled','in_progress'].includes(fixture?.status)||!market?.open)return null;
+  if(!bettable(fixture)||!market?.open)return null;
   const selection=market.selections.find(s=>s.key===selectionField.value&&s.probability>0);
   return selection?{...selection,odd:newOdd??selection.odd}:null;
  }
@@ -60,10 +68,7 @@
    if(current!==session||generation!==loadGeneration)return;
    historySynced=true;synced=liveConnected;if(revision===fixtureRevision)fixtures=published;bets=own;
    if(!pending&&!busy) {
-    const selected=fixtureField.value;
-    fixtureField.replaceChildren(option('','Selecione uma partida'),...fixtures.filter(f=>['scheduled','in_progress'].includes(f.status)).map(f=>option(f.id,`${f.homeTeamName} × ${f.awayTeamName}`)));
-    if(fixtures.some(f=>f.id===selected&&['scheduled','in_progress'].includes(f.status)))fixtureField.value=selected;
-    selections();
+    renderFixtureOptions();
    }
    renderHistory();update();
   }catch(error){if(current!==session||generation!==loadGeneration)return;synced=false;status.textContent=`Sem sincronização. ${error.message} Sincronize antes de fazer uma nova aposta.`;update();}
@@ -76,11 +81,11 @@
  window.addEventListener('online',load);
  document.addEventListener('live-connection',event=>{liveConnected=event.detail;synced=liveConnected&&historySynced;if(owner&&!synced)status.textContent='Sem sincronização ao vivo. Novas apostas bloqueadas até reconectar.';update();});
  document.addEventListener('fixtures-snapshot',event=>{
-  const previous=fixtures.filter(f=>['scheduled','in_progress'].includes(f.status)).map(f=>f.id).join(',');
+  const previous=availableFixtures().map(f=>f.id).join(',');
   fixtureRevision++;fixtures=event.detail;if(!owner)return;synced=liveConnected&&historySynced;
   if(newOdd){const fixture=fixtures.find(f=>f.id===fixtureField.value),selection=fixture?.markets[marketField.value]?.selections.find(item=>item.key===selectionField.value&&item.available);newOdd=selection?.odd??null;if(newOdd)status.textContent=`A odd mudou para ${newOdd.replace('.',',')}. Revise o retorno e clique em “Confirmar nova odd” para aceitar.`;}
-  const next=fixtures.filter(f=>['scheduled','in_progress'].includes(f.status)).map(f=>f.id).join(',');
-  if(previous!==next&&!pending&&!busy){const selected=fixtureField.value;fixtureField.replaceChildren(option('','Selecione uma partida'),...fixtures.filter(f=>['scheduled','in_progress'].includes(f.status)).map(f=>option(f.id,`${f.homeTeamName} × ${f.awayTeamName}`)));if(fixtures.some(f=>f.id===selected&&['scheduled','in_progress'].includes(f.status)))fixtureField.value=selected;}
+  const next=availableFixtures().map(f=>f.id).join(',');
+  if(previous!==next&&!pending&&!busy)renderFixtureOptions();
   if(!pending&&!busy)selections();else update();
  });
  form.addEventListener('submit',async event=>{
