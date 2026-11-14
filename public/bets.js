@@ -5,9 +5,17 @@
  const labels={pending:'Pendente',won:'Ganha',lost:'Perdida',refunded:'Estornada'};
  const node=(tag,text)=>{const element=document.createElement(tag);if(text!==undefined)element.textContent=text;return element;};
  const option=(value,text)=>{const element=node('option',text);element.value=value;return element;};
+ const bettable=fixture=>['scheduled','in_progress'].includes(fixture?.status);
+ const availableFixtures=()=>fixtures.filter(bettable);
+ function renderFixtureOptions() {
+  const selected=fixtureField.value;
+  fixtureField.replaceChildren(option('','Selecione uma partida'),...availableFixtures().map(f=>option(f.id,`${f.homeTeamName} × ${f.awayTeamName}`)));
+  if(availableFixtures().some(f=>f.id===selected))fixtureField.value=selected;
+  selections();
+ }
  function quote() {
   const fixture=fixtures.find(f=>f.id===fixtureField.value),market=fixture?.markets[marketField.value];
-  if(fixture?.status!=='scheduled'||!market?.open)return null;
+  if(!bettable(fixture)||!market?.open)return null;
   const selection=market.selections.find(s=>s.key===selectionField.value&&s.probability>0);
   return selection?{...selection,odd:newOdd??selection.odd}:null;
  }
@@ -20,13 +28,16 @@
   const selection=quote(),stake=cents();
   quoteText.textContent=selection?`Odd confirmada: ${selection.odd.replace('.',',')}${stake===null?'':` · Retorno potencial: ${formatMoneyCents((BigInt(stake)*BigInt(selection.odd.replace('.',''))+50n)/100n)} (inclui o valor apostado)`}`:'Selecione uma partida e um resultado disponíveis.';
   for(const input of form.querySelectorAll('input,select'))input.disabled=busy||Boolean(pending);
-  submit.disabled=busy||(!pending&&(!synced||!selection));
+  submit.disabled=busy||!synced||(!pending&&!selection);
   submit.textContent=pending?'Repetir a mesma aposta':newOdd?'Confirmar nova odd':'Confirmar aposta simulada';
  }
  function selections() {
   const previous=selectionField.value,fixture=fixtures.find(f=>f.id===fixtureField.value),market=fixture?.markets[marketField.value];
-  selectionField.replaceChildren(...(market?.open?market.selections.filter(s=>s.probability>0).map(s=>option(s.key,s.label)):[]));
-  if([...selectionField.options].some(o=>o.value===previous))selectionField.value=previous;
+  const available=market?.open?market.selections.filter(s=>s.available):[];
+  if([...selectionField.options].slice(1).map(item=>item.value).join('|')!==available.map(item=>item.key).join('|')) {
+   selectionField.replaceChildren(option('','Selecione um resultado'),...available.map(s=>option(s.key,s.label)));
+   if(available.some(item=>item.key===previous))selectionField.value=previous;
+  }
   update();
  }
  function renderHistory() {
@@ -57,30 +68,28 @@
    if(current!==session||generation!==loadGeneration)return;
    historySynced=true;synced=liveConnected;if(revision===fixtureRevision)fixtures=published;bets=own;
    if(!pending&&!busy) {
-    const selected=fixtureField.value;
-    fixtureField.replaceChildren(option('','Selecione uma partida'),...fixtures.filter(f=>f.status==='scheduled').map(f=>option(f.id,`${f.homeTeamName} × ${f.awayTeamName}`)));
-    if(fixtures.some(f=>f.id===selected&&f.status==='scheduled'))fixtureField.value=selected;
-    selections();
+    renderFixtureOptions();
    }
    renderHistory();update();
   }catch(error){if(current!==session||generation!==loadGeneration)return;synced=false;status.textContent=`Sem sincronização. ${error.message} Sincronize antes de fazer uma nova aposta.`;update();}
  }
- for(const field of [fixtureField,marketField])field.addEventListener('change',()=>{newOdd=null;selections();});
+ for(const field of [fixtureField,marketField])field.addEventListener('change',()=>{newOdd=null;selectionField.value='';selections();});
  selectionField.addEventListener('change',()=>{newOdd=null;update();});amountField.addEventListener('input',update);
  fixtureFilter.addEventListener('change',renderHistory);statusFilter.addEventListener('change',renderHistory);
  document.querySelector('#bets-refresh').addEventListener('click',async()=>{await load();if(synced)status.textContent='Partidas e apostas sincronizadas. Revise os dados antes de confirmar.';});
- window.addEventListener('offline',()=>{if(!owner)return;loadGeneration++;synced=false;status.textContent='Sem conexão. Sincronize antes de fazer uma nova aposta.';update();});
+ window.addEventListener('offline',()=>{if(!owner)return;loadGeneration++;liveConnected=false;synced=false;status.textContent='Sem conexão. Sincronize antes de fazer uma nova aposta.';update();});
  window.addEventListener('online',load);
  document.addEventListener('live-connection',event=>{liveConnected=event.detail;synced=liveConnected&&historySynced;if(owner&&!synced)status.textContent='Sem sincronização ao vivo. Novas apostas bloqueadas até reconectar.';update();});
  document.addEventListener('fixtures-snapshot',event=>{
-  const previous=fixtures.filter(f=>f.status==='scheduled').map(f=>f.id).join(',');
+  const previous=availableFixtures().map(f=>f.id).join(',');
   fixtureRevision++;fixtures=event.detail;if(!owner)return;synced=liveConnected&&historySynced;
-  const next=fixtures.filter(f=>f.status==='scheduled').map(f=>f.id).join(',');
-  if(previous!==next&&!pending&&!busy){const selected=fixtureField.value;fixtureField.replaceChildren(option('','Selecione uma partida'),...fixtures.filter(f=>f.status==='scheduled').map(f=>option(f.id,`${f.homeTeamName} × ${f.awayTeamName}`)));if(fixtures.some(f=>f.id===selected&&f.status==='scheduled'))fixtureField.value=selected;selections();}
-  update();
+  if(newOdd){const fixture=fixtures.find(f=>f.id===fixtureField.value),selection=fixture?.markets[marketField.value]?.selections.find(item=>item.key===selectionField.value&&item.available);newOdd=selection?.odd??null;if(newOdd)status.textContent=`A odd mudou para ${newOdd.replace('.',',')}. Revise o retorno e clique em “Confirmar nova odd” para aceitar.`;}
+  const next=availableFixtures().map(f=>f.id).join(',');
+  if(previous!==next&&!pending&&!busy)renderFixtureOptions();
+  if(!pending&&!busy)selections();else update();
  });
  form.addEventListener('submit',async event=>{
-  event.preventDefault();if(!owner||busy||(!pending&&!synced))return;
+  event.preventDefault();if(!owner||busy||!synced)return;
   if(!pending) {
    const selection=quote(),stake=cents();
    if(!selection||stake===null){status.textContent='Escolha um resultado e informe de R$ 1,00 a R$ 100,00, com no máximo dois centavos.';return;}
