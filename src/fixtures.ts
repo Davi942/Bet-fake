@@ -3,8 +3,12 @@ import { randomUUID } from 'node:crypto';
 import { Database } from './database';
 import { Auth } from './auth';
 import { goalRates, liveMarkets, pregameMarkets } from './markets';
-import { MATCH_DURATION_MS, MATCH_MINUTES, SimulationBoundary } from './simulation-boundary';
+import { MATCH_DURATION_MS, MATCH_MINUTES, MatchEvent, SimulationBoundary } from './simulation-boundary';
 type Request={headers:Record<string,string|undefined>};
+type FixtureRow={id:string;homeTeamId:string;awayTeamId:string;homeTeamName:string;awayTeamName:string;scheduledAt:Date;status:string;elapsedMs:number;home:number;away:number;events:MatchEvent[]};
+type LineupRow={teamId:string;playerId:string;name:string;position:string;overall:number};
+type FixtureView={id:string;homeTeamId:string;awayTeamId:string;homeTeamName:string;awayTeamName:string;scheduledAt:Date;status:string;elapsedMs:number;events:MatchEvent[];lineups:LineupRow[];homeOverall:number;awayOverall:number;minute:number;score:{home:number;away:number};markets:ReturnType<typeof liveMarkets>};
+const FIXTURE_COLUMNS=`f.id,f.home_team_id AS "homeTeamId",f.away_team_id AS "awayTeamId",f.home_team_name AS "homeTeamName",f.away_team_name AS "awayTeamName",f.scheduled_at AS "scheduledAt",f.status,f.elapsed_ms AS "elapsedMs",f.home_score AS home,f.away_score AS away,f.events`;
 function input(raw:unknown) {
  if(!raw || typeof raw!=='object'||Array.isArray(raw)) throw new BadRequestException('Dados inválidos.');
  return raw as Record<string,unknown>;
@@ -19,16 +23,27 @@ function scheduledDate(value:unknown) {
 }
 @Injectable()
 export class Fixtures {
+ private listing?:Promise<FixtureView[]>;
  constructor(private readonly db:Database,private readonly simulation:SimulationBoundary) {}
- async list() {
-  const rows=(await this.db.pool.query('SELECT id FROM fixtures ORDER BY scheduled_at,id')).rows;
-  return Promise.all(rows.map(row=>this.detail(row.id)));
+ list():Promise<FixtureView[]> {
+  if(this.listing)return this.listing;
+  this.listing=this.readList().finally(()=>{this.listing=undefined;});
+  return this.listing;
+ }
+ private async readList():Promise<FixtureView[]> {
+  const rows=(await this.db.pool.query<(FixtureRow & {lineups:LineupRow[]})>(`SELECT ${FIXTURE_COLUMNS},
+   COALESCE(json_agg(json_build_object('teamId',l.team_id,'playerId',l.player_id,'name',l.name,'position',l.position,'overall',l.overall) ORDER BY l.team_id,l.player_id) FILTER (WHERE l.player_id IS NOT NULL),'[]'::json) AS lineups
+   FROM fixtures f LEFT JOIN fixture_lineups l ON l.fixture_id=f.id GROUP BY f.id ORDER BY f.scheduled_at,f.id`)).rows;
+  return rows.map(({lineups,...fixture})=>this.present(fixture,lineups));
  }
  async detail(id:string) {
-  const row=(await this.db.pool.query(`SELECT id,home_team_id AS "homeTeamId",away_team_id AS "awayTeamId",home_team_name AS "homeTeamName",away_team_name AS "awayTeamName",scheduled_at AS "scheduledAt",status,elapsed_ms AS "elapsedMs",home_score AS home,away_score AS away,events FROM fixtures WHERE id=$1`,[id])).rows[0];
+  const row=(await this.db.pool.query<FixtureRow>(`SELECT ${FIXTURE_COLUMNS} FROM fixtures f WHERE f.id=$1`,[id])).rows[0];
   const fixture=row;
   if(!fixture) throw new NotFoundException('Partida não encontrada.');
-  const lineups=(await this.db.pool.query(`SELECT team_id AS "teamId",player_id AS "playerId",name,position,overall FROM fixture_lineups WHERE fixture_id=$1 ORDER BY team_id,player_id`,[id])).rows;
+  const lineups=(await this.db.pool.query<LineupRow>(`SELECT team_id AS "teamId",player_id AS "playerId",name,position,overall FROM fixture_lineups WHERE fixture_id=$1 ORDER BY team_id,player_id`,[id])).rows;
+  return this.present(fixture,lineups);
+ }
+ private present(fixture:FixtureRow,lineups:LineupRow[]):FixtureView {
   const overall=(teamId:string)=>lineups.filter(p=>p.teamId===teamId).reduce((sum,p)=>sum+p.overall,0)/11;
   const homeOverall=overall(fixture.homeTeamId),awayOverall=overall(fixture.awayTeamId);
   const {home,away,...published}=fixture;

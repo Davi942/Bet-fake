@@ -1,7 +1,7 @@
 import { Injectable, OnApplicationBootstrap, OnModuleDestroy } from '@nestjs/common';
 import { PoolClient } from 'pg';
 import { Database } from './database';
-import { Goal, MatchEvent, MATCH_DURATION_MS, MATCH_MINUTES, SimulationBoundary } from './simulation-boundary';
+import { MATCH_DURATION_MS, MATCH_MINUTES, SimulationBoundary } from './simulation-boundary';
 import { LiveGateway } from './live-gateway';
 
 @Injectable()
@@ -44,24 +44,28 @@ export class Simulation implements OnApplicationBootstrap,OnModuleDestroy {
   const client=this.leader;
   const now=this.boundary.now(),delta=Math.max(0,Math.min(1000,Math.floor(now-(this.previous??now))));
   this.previous=now;
-  try {
-   await client.query('BEGIN');
-   // One durable flush per cycle avoids multiplying WAL sync latency by the
-   // number of live games. Lock fixture IDs in order before any future wallets.
-   const fixtures=(await client.query("SELECT * FROM fixtures WHERE status='in_progress' AND goal_plan IS NOT NULL ORDER BY id FOR UPDATE")).rows;
-   const nextSeen=new Set<string>();
-   for(const fixture of fixtures) {
-     const id=fixture.id;
-     const elapsed=Math.min(MATCH_DURATION_MS,fixture.elapsed_ms+(this.seen.has(id)?delta:0));
-     const goals=(fixture.goal_plan as Goal[]).filter(goal=>goal.at<=elapsed);
-     const events:MatchEvent[]=[{type:'kickoff',minute:0},...goals.map(goal=>({type:'goal' as const,minute:Math.ceil(goal.at/MATCH_DURATION_MS*MATCH_MINUTES),teamId:goal.side==='home'?fixture.home_team_id:fixture.away_team_id}))];
-     const status=elapsed===MATCH_DURATION_MS?'finished':'in_progress';
-     if(status==='finished')events.push({type:'end',minute:MATCH_MINUTES});
-     await client.query('UPDATE fixtures SET elapsed_ms=$2,home_score=$3,away_score=$4,events=$5,status=$6 WHERE id=$1',[id,elapsed,goals.filter(g=>g.side==='home').length,goals.filter(g=>g.side==='away').length,JSON.stringify(events),status]);
-     if(status==='in_progress')nextSeen.add(id);
-   }
-   await client.query('COMMIT');
-   this.seen=nextSeen;
-  }catch(error){try{await client.query('ROLLBACK');}catch{}throw error;}
+  // A single elected leader owns live fixture writes. Compute and persist each
+  // complete snapshot in one atomic statement to avoid a read/write round trip.
+  const result=await client.query<{id:string;status:string}>(`WITH scored AS (
+   SELECT f.id,f.home_team_id,f.away_team_id,
+    LEAST(${MATCH_DURATION_MS},f.elapsed_ms+CASE WHEN f.id=ANY($2::text[]) THEN $1::integer ELSE 0 END) AS elapsed_ms,
+    f.goal_plan
+   FROM fixtures f WHERE f.status='in_progress' AND f.goal_plan IS NOT NULL
+  ), totals AS (
+   SELECT s.*,
+    (SELECT count(*)::integer FROM jsonb_array_elements(s.goal_plan) AS goal(value) WHERE (goal.value->>'at')::numeric<=s.elapsed_ms AND goal.value->>'side'='home') AS home_score,
+    (SELECT count(*)::integer FROM jsonb_array_elements(s.goal_plan) AS goal(value) WHERE (goal.value->>'at')::numeric<=s.elapsed_ms AND goal.value->>'side'='away') AS away_score
+   FROM scored s
+  ), snapshots AS (
+   SELECT t.*,CASE WHEN t.elapsed_ms=${MATCH_DURATION_MS} THEN 'finished' ELSE 'in_progress' END AS status,
+    jsonb_build_array(jsonb_build_object('type','kickoff','minute',0)) ||
+    COALESCE((SELECT jsonb_agg(jsonb_build_object('type','goal','minute',CEIL((goal.value->>'at')::numeric/${MATCH_DURATION_MS}*${MATCH_MINUTES})::integer,'teamId',CASE WHEN goal.value->>'side'='home' THEN t.home_team_id ELSE t.away_team_id END) ORDER BY (goal.value->>'at')::numeric)
+     FROM jsonb_array_elements(t.goal_plan) AS goal(value) WHERE (goal.value->>'at')::numeric<=t.elapsed_ms),'[]'::jsonb) ||
+    CASE WHEN t.elapsed_ms=${MATCH_DURATION_MS} THEN jsonb_build_array(jsonb_build_object('type','end','minute',${MATCH_MINUTES})) ELSE '[]'::jsonb END AS events
+   FROM totals t
+  )
+  UPDATE fixtures f SET elapsed_ms=s.elapsed_ms,home_score=s.home_score,away_score=s.away_score,events=s.events,status=s.status
+  FROM snapshots s WHERE f.id=s.id RETURNING f.id,f.status`,[delta,[...this.seen]]);
+  this.seen=new Set(result.rows.filter(row=>row.status==='in_progress').map(row=>row.id));
  }
 }

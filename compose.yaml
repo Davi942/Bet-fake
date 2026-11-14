@@ -1,6 +1,8 @@
 services:
   db:
     image: postgres:18-bookworm
+    # Keep automatic checkpoints out of the five-minute match window on slow local disks.
+    command: ["postgres", "-c", "checkpoint_timeout=15min"]
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-bet_fake}
       POSTGRES_USER: ${POSTGRES_USER:-bet_fake}

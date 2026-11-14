@@ -6,6 +6,8 @@
 
 O gateway Nest com adaptador `ws` atende WebSocket nativo em `/ws/fixtures`, sem autenticação para leitura. Envia `{type: "fixtures", fixtures: [...]}` na conexão e a cada ciclo de aproximadamente 500 ms; não recebe comandos de jogo nem expõe dados financeiros privados. Falha de leitura envia `{type: "unavailable"}`. Reconectar sempre envia um retrato completo atual. A interface considera o feed sem sincronização após dois segundos sem retrato e bloqueia novas apostas até recuperar. Ela atualiza relógio, placar, odds e eventos sem reconstruir os formulários administrativos, detalhes abertos ou entradas de aposta pendentes.
 
+A listagem pública lê partidas e escalações em lote. Leituras concorrentes que chegam enquanto o mesmo retrato está sendo consultado compartilham a consulta em andamento, reduzindo a carga no banco durante o envio do feed e o acesso simultâneo de usuários. Não há cache de retratos entre consultas concluídas.
+
 ## Modelo e interrupções
 
 As duas taxas de gols vêm dos overalls dos titulares fixados, conforme ADR 0002. Intervalos exponenciais independentes geram uma trajetória de Poisson por time. O período inteiro tem 300.000 ms reais, representando 90 minutos e quatro de acréscimos fixos. A expectativa de 1,35 gol por lado igualmente forte vale para esse período inteiro, incluindo acréscimos. Não há intervalo, prorrogação ou pênaltis.
@@ -14,6 +16,6 @@ No início, somente as taxas e a fonte de aleatoriedade criptográfica determina
 
 Uma conexão PostgreSQL mantém um advisory lock de liderança da simulação. Outras instâncias continuam servindo HTTP/WebSocket sem contar o tempo novamente. Inícios usam outro advisory lock transacional e depois o bloqueio da partida, preservando a ordem partida → carteira para integrações financeiras futuras. Falhas da conexão de liderança pausam a simulação, liberam a conexão e permitem nova aquisição. O desligamento encerra o agendador e libera a liderança antes de fechar o pool.
 
-Cada ciclo bloqueia as partidas ativas em ordem de ID e grava seus relógios, placares, eventos e estados em uma única transação durável. Isso evita multiplicar a espera por sincronização do WAL por cinco partidas, mantendo o fsync e a publicação somente após COMMIT. O conjunto de partidas já observadas só muda depois dessa confirmação; rollback e perda de liderança descartam as referências locais.
+Cada ciclo lê as partidas ativas sob a liderança exclusiva e grava relógios, placares, eventos e estados em um único `UPDATE` atômico. A instrução única evita multiplicar idas ao banco por partida e mantém cada retrato persistido coerente. A publicação ocorre depois da gravação; o conjunto de partidas já observadas só muda depois que a atualização termina. Perda de liderança descarta as referências locais.
 
 O relógio usa incrementos monotônicos enquanto o processo e o banco estão disponíveis, com no máximo um segundo por ciclo; uma pausa longa do processo também pausa o jogo. Não se persiste uma data para recuperar tempo de parede. Aquisição de liderança e primeiro encontro de cada partida estabelecem uma referência nova, sem incremento: após reiniciar processo ou banco, retomam-se exatamente o tempo e placar gravados, sem recuperar o intervalo indisponível nem sortear gols novamente.
