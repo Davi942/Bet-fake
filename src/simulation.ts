@@ -1,4 +1,5 @@
 import { Injectable, OnApplicationBootstrap, OnModuleDestroy } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import { PoolClient } from 'pg';
 import { Database } from './database';
 import { MATCH_DURATION_MS, MATCH_MINUTES, SimulationBoundary } from './simulation-boundary';
@@ -10,6 +11,7 @@ export class Simulation implements OnApplicationBootstrap,OnModuleDestroy {
  private leaderError?:()=>void;
  private previous?:number;
  private seen=new Set<string>();
+ private recover=true;
  private busy?:Promise<void>;
  private stop?:()=>void;
  private closing=false;
@@ -17,7 +19,7 @@ export class Simulation implements OnApplicationBootstrap,OnModuleDestroy {
  onApplicationBootstrap(){this.stop=this.boundary.schedule(()=>this.run());}
  async onModuleDestroy(){this.closing=true;this.stop?.();await this.busy;await this.release();}
  private async release() {
-  const leader=this.leader;this.leader=undefined;this.previous=undefined;this.seen.clear();
+  const leader=this.leader;this.leader=undefined;this.previous=undefined;this.seen.clear();this.recover=true;
   if(leader){try{await leader.query('SELECT pg_advisory_unlock(942008)');}catch{}finally{if(this.leaderError)leader.removeListener('error',this.leaderError);this.leaderError=undefined;leader.release(true);}}
  }
  private run() {
@@ -67,5 +69,46 @@ export class Simulation implements OnApplicationBootstrap,OnModuleDestroy {
   UPDATE fixtures f SET elapsed_ms=s.elapsed_ms,home_score=s.home_score,away_score=s.away_score,events=s.events,status=s.status
   FROM snapshots s WHERE f.id=s.id RETURNING f.id,f.status`,[delta,[...this.seen]]);
   this.seen=new Set(result.rows.filter(row=>row.status==='in_progress').map(row=>row.id));
+  const finished=new Set(result.rows.filter(row=>row.status==='finished').map(row=>row.id));
+  if(this.recover){
+   const pending=await client.query<{id:string}>(`SELECT f.id FROM fixtures f WHERE f.status='finished'
+    AND EXISTS(SELECT 1 FROM bets b WHERE b.fixture_id=f.id AND b.status='pending') ORDER BY f.id`);
+   for(const row of pending.rows)finished.add(row.id);
+   this.recover=false;
+  }
+  for(const id of [...finished].sort())await this.settle(client,id);
+ }
+ private async settle(client:PoolClient,id:string) {
+  await client.query('BEGIN');
+  try {
+   const fixture=(await client.query<{home_score:number;away_score:number;status:string}>
+    ('SELECT home_score,away_score,status FROM fixtures WHERE id=$1 FOR UPDATE',[id])).rows[0];
+   if(!fixture||fixture.status!=='finished'){await client.query('COMMIT');return;}
+   type Pending={id:string;user_id:string;market:string;selection:string;potential_return_cents:string};
+   const bets=(await client.query<Pending>(`SELECT id,user_id,market,selection,potential_return_cents FROM bets
+    WHERE fixture_id=$1 AND status='pending' ORDER BY user_id,id FOR UPDATE`,[id])).rows;
+   const balances=new Map<string,bigint>();
+   for(const owner of [...new Set(bets.map(bet=>bet.user_id))].sort()){
+    const wallet=(await client.query<{balance_cents:string}>
+     ('SELECT balance_cents FROM wallets WHERE user_id=$1 FOR UPDATE',[owner])).rows[0];
+    if(!wallet)throw new Error('Carteira ausente durante liquidação.');
+    balances.set(owner,BigInt(wallet.balance_cents));
+   }
+   for(const bet of bets){
+    const {home_score:home,away_score:away}=fixture;
+    const winner=bet.market==='result'
+     ?bet.selection===(home>away?'home':home<away?'away':'draw')
+     :bet.selection==='other'?(home>5||away>5):bet.selection===`${home}-${away}`;
+    await client.query('UPDATE bets SET status=$2 WHERE id=$1',[bet.id,winner?'won':'lost']);
+    if(!winner)continue;
+    const amount=BigInt(bet.potential_return_cents),balance=balances.get(bet.user_id)!+amount;
+    balances.set(bet.user_id,balance);
+    await client.query('UPDATE wallets SET balance_cents=$2 WHERE user_id=$1',[bet.user_id,balance.toString()]);
+    await client.query(`INSERT INTO wallet_entries(id,user_id,kind,amount_cents,balance_after_cents,operation_key,bet_id,fixture_id,created_at)
+     VALUES($1,$2,'payout',$3,$4,$5,$6,$7,clock_timestamp())`,
+     [randomUUID(),bet.user_id,amount.toString(),balance.toString(),`payout:${bet.id}`,bet.id,id]);
+   }
+   await client.query('COMMIT');
+  }catch(error){try{await client.query('ROLLBACK');}catch{}throw error;}
  }
 }
