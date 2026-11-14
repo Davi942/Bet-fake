@@ -50,7 +50,7 @@ export class Bets {
    if((await client.query('SELECT id FROM wallet_entries WHERE user_id=$1 AND operation_key=$2',[user.id,body.operationKey])).rowCount)
     throw new ConflictException('Identificador já usado para outra operação financeira.');
    if(!fixture) throw new NotFoundException('Partida não encontrada.');
-   if(!['scheduled','in_progress'].includes(fixture.status)) throw new BadRequestException('A partida não está aberta para apostas.');
+   if(!['scheduled','in_progress'].includes(fixture.status)||fixture.elapsed_ms>=MATCH_DURATION_MS) throw new BadRequestException('A partida não está aberta para apostas.');
    const lineups=(await client.query('SELECT team_id,overall FROM fixture_lineups WHERE fixture_id=$1',[body.fixtureId])).rows;
    const overall=(id:string)=>lineups.filter(p=>p.team_id===id).reduce((sum,p)=>sum+p.overall,0)/11;
    const markets=fixture.status==='scheduled'

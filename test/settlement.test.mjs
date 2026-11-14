@@ -45,9 +45,10 @@ test('a restarted leader settles a persisted final result without paying twice',
   const fixture=await detail(),odd=fixture.markets.result.selections.find(item=>item.key==='draw').odd;
   const wager={fixtureId:fixture.id,market:'result',selection:'draw',stakeCents:100,confirmedOdd:odd,operationKey:'before-final'};
   assert.equal((await call('/api/bets',wager,bettor)).status,201);
-  // Fault-injection setup: the final fixture commit survived, but settlement did not start.
+  assert.equal((await call('/api/fixtures/'+fixture.id+'/start',{},cookie)).status,201);
+  // Fault-injection setup: the final clock survived, but settlement did not start.
   const {Database}=require('./dist/database');
-  await app.get(Database).pool.query("UPDATE fixtures SET status='finished',elapsed_ms=300000,home_score=0,away_score=0,events=jsonb_build_array(jsonb_build_object('type','kickoff','minute',0),jsonb_build_object('type','end','minute',94)) WHERE id=$1",[fixture.id]);
+  await app.get(Database).pool.query("UPDATE fixtures SET elapsed_ms=300000,home_score=0,away_score=0 WHERE id=$1",[fixture.id]);
   await app.close();closed=true;
   successor=await createApplication({simulation:{now:()=>0,random:()=>0.1,schedule:task=>{resumeTick=task;return ()=>{};}}});
   await successor.listen(0,'127.0.0.1');
@@ -93,4 +94,35 @@ for(const scenario of [
   console.log('settlement-outcome-ok');
  }finally{await app.close();}
  `),/settlement-outcome-ok/);
+});
+
+test('final state and payouts become visible together while settlement waits',()=>{
+ assert.match(liveCase(`${liveSetup.replace('random:()=>0.5','random:()=>0.1')}
+ let blocker;
+ try {
+  const account={displayName:'Visibilidade',email:'atomic-settlement@example.com',password:'Password123!'};
+  assert.equal((await call('/api/auth/signup',account)).status,201);
+  const bettor=(await call('/api/auth/login',account)).headers.get('set-cookie');
+  const fixture=await detail(),odd=fixture.markets.result.selections.find(item=>item.key==='draw').odd;
+  assert.equal((await call('/api/bets',{fixtureId:fixture.id,market:'result',selection:'draw',stakeCents:100,confirmedOdd:odd,operationKey:'atomic-bet'},bettor)).status,201);
+  const {Database}=require('./dist/database'),database=app.get(Database);
+  await database.pool.query("CREATE FUNCTION hold_settlement() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN PERFORM pg_advisory_xact_lock(942009); RETURN NEW; END $$; CREATE TRIGGER hold_settlement BEFORE UPDATE ON bets FOR EACH ROW EXECUTE FUNCTION hold_settlement()");
+  blocker=await database.pool.connect();await blocker.query('SELECT pg_advisory_lock(942009)');
+  assert.equal((await call('/api/fixtures/'+fixture.id+'/start',{},cookie)).status,201);
+  await tick();await advance(299000);now+=1000;
+  const finishing=tick(),deadline=Date.now()+10000;
+  let during;
+  for(;;){during=await detail();if(during.elapsedMs===300000)break;assert.ok(Date.now()<deadline);await new Promise(r=>setTimeout(r,20));}
+  assert.equal(during.status,'in_progress');assert.equal(during.markets.result.open,false);
+  assert.equal((await (await call('/api/bets',undefined,bettor)).json())[0].status,'pending');
+  assert.equal((await (await call('/api/wallet',undefined,bettor)).json()).balanceCents,9900);
+  await blocker.query('SELECT pg_advisory_unlock(942009)');blocker.release();blocker=undefined;
+  await finishing;
+  assert.equal((await detail()).status,'finished');
+  assert.equal((await call('/api/bets',{fixtureId:fixture.id,market:'result',selection:'draw',stakeCents:100,confirmedOdd:odd,operationKey:'too-late'},bettor)).status,400);
+  assert.equal((await (await call('/api/bets',undefined,bettor)).json())[0].status,'won');
+  assert.equal((await (await call('/api/wallet',undefined,bettor)).json()).entries.filter(entry=>entry.kind==='payout').length,1);
+  console.log('settlement-atomic-ok');
+ }finally{if(blocker){await blocker.query('SELECT pg_advisory_unlock(942009)');blocker.release();}await app.close();}
+ `),/settlement-atomic-ok/);
 });

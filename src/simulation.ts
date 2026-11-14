@@ -48,7 +48,7 @@ export class Simulation implements OnApplicationBootstrap,OnModuleDestroy {
   this.previous=now;
   // A single elected leader owns live fixture writes. Compute and persist each
   // complete snapshot in one atomic statement to avoid a read/write round trip.
-  const result=await client.query<{id:string;status:string}>(`WITH scored AS (
+  const result=await client.query<{id:string;status:string;elapsed_ms:number}>(`WITH scored AS (
    SELECT f.id,f.home_team_id,f.away_team_id,
     LEAST(${MATCH_DURATION_MS},f.elapsed_ms+CASE WHEN f.id=ANY($2::text[]) THEN $1::integer ELSE 0 END) AS elapsed_ms,
     f.goal_plan
@@ -59,20 +59,20 @@ export class Simulation implements OnApplicationBootstrap,OnModuleDestroy {
     (SELECT count(*)::integer FROM jsonb_array_elements(s.goal_plan) AS goal(value) WHERE (goal.value->>'at')::numeric<=s.elapsed_ms AND goal.value->>'side'='away') AS away_score
    FROM scored s
   ), snapshots AS (
-   SELECT t.*,CASE WHEN t.elapsed_ms=${MATCH_DURATION_MS} THEN 'finished' ELSE 'in_progress' END AS status,
+   SELECT t.*,
     jsonb_build_array(jsonb_build_object('type','kickoff','minute',0)) ||
     COALESCE((SELECT jsonb_agg(jsonb_build_object('type','goal','minute',CEIL((goal.value->>'at')::numeric/${MATCH_DURATION_MS}*${MATCH_MINUTES})::integer,'teamId',CASE WHEN goal.value->>'side'='home' THEN t.home_team_id ELSE t.away_team_id END) ORDER BY (goal.value->>'at')::numeric)
-     FROM jsonb_array_elements(t.goal_plan) AS goal(value) WHERE (goal.value->>'at')::numeric<=t.elapsed_ms),'[]'::jsonb) ||
-    CASE WHEN t.elapsed_ms=${MATCH_DURATION_MS} THEN jsonb_build_array(jsonb_build_object('type','end','minute',${MATCH_MINUTES})) ELSE '[]'::jsonb END AS events
+     FROM jsonb_array_elements(t.goal_plan) AS goal(value) WHERE (goal.value->>'at')::numeric<=t.elapsed_ms),'[]'::jsonb) AS events
    FROM totals t
   )
-  UPDATE fixtures f SET elapsed_ms=s.elapsed_ms,home_score=s.home_score,away_score=s.away_score,events=s.events,status=s.status
-  FROM snapshots s WHERE f.id=s.id RETURNING f.id,f.status`,[delta,[...this.seen]]);
-  this.seen=new Set(result.rows.filter(row=>row.status==='in_progress').map(row=>row.id));
-  const finished=new Set(result.rows.filter(row=>row.status==='finished').map(row=>row.id));
+  UPDATE fixtures f SET elapsed_ms=s.elapsed_ms,home_score=s.home_score,away_score=s.away_score,events=s.events
+  FROM snapshots s WHERE f.id=s.id RETURNING f.id,f.status,f.elapsed_ms`,[delta,[...this.seen]]);
+  this.seen=new Set(result.rows.filter(row=>row.status==='in_progress'&&row.elapsed_ms<MATCH_DURATION_MS).map(row=>row.id));
+  const finished=new Set(result.rows.filter(row=>row.elapsed_ms>=MATCH_DURATION_MS).map(row=>row.id));
   if(this.recover){
-   const pending=await client.query<{id:string}>(`SELECT f.id FROM fixtures f WHERE f.status='finished'
-    AND EXISTS(SELECT 1 FROM bets b WHERE b.fixture_id=f.id AND b.status='pending') ORDER BY f.id`);
+   const pending=await client.query<{id:string}>(`SELECT f.id FROM fixtures f WHERE
+    (f.status='in_progress' AND f.elapsed_ms>=${MATCH_DURATION_MS}) OR
+    (f.status='finished' AND EXISTS(SELECT 1 FROM bets b WHERE b.fixture_id=f.id AND b.status='pending')) ORDER BY f.id`);
    for(const row of pending.rows)finished.add(row.id);
    this.recover=false;
   }
@@ -81,9 +81,9 @@ export class Simulation implements OnApplicationBootstrap,OnModuleDestroy {
  private async settle(client:PoolClient,id:string) {
   await client.query('BEGIN');
   try {
-   const fixture=(await client.query<{home_score:number;away_score:number;status:string}>
-    ('SELECT home_score,away_score,status FROM fixtures WHERE id=$1 FOR UPDATE',[id])).rows[0];
-   if(!fixture||fixture.status!=='finished'){await client.query('COMMIT');return;}
+   const fixture=(await client.query<{home_score:number;away_score:number;status:string;elapsed_ms:number}>
+    ('SELECT home_score,away_score,status,elapsed_ms FROM fixtures WHERE id=$1 FOR UPDATE',[id])).rows[0];
+   if(!fixture||!(fixture.status==='finished'||(fixture.status==='in_progress'&&fixture.elapsed_ms>=MATCH_DURATION_MS))){await client.query('COMMIT');return;}
    type Pending={id:string;user_id:string;market:string;selection:string;potential_return_cents:string};
    const bets=(await client.query<Pending>(`SELECT id,user_id,market,selection,potential_return_cents FROM bets
     WHERE fixture_id=$1 AND status='pending' ORDER BY user_id,id FOR UPDATE`,[id])).rows;
@@ -108,6 +108,7 @@ export class Simulation implements OnApplicationBootstrap,OnModuleDestroy {
      VALUES($1,$2,'payout',$3,$4,$5,$6,$7,clock_timestamp())`,
      [randomUUID(),bet.user_id,amount.toString(),balance.toString(),`payout:${bet.id}`,bet.id,id]);
    }
+   if(fixture.status==='in_progress')await client.query(`UPDATE fixtures SET status='finished',events=events || jsonb_build_array(jsonb_build_object('type','end','minute',${MATCH_MINUTES})) WHERE id=$1`,[id]);
    await client.query('COMMIT');
   }catch(error){try{await client.query('ROLLBACK');}catch{}throw error;}
  }
