@@ -1,6 +1,12 @@
 # Testes de integração
 
-Os testes de apostas verificam respostas HTTP, carteira, extrato e histórico próprio. Para preparar os status ainda sem operação pública no #6, o teste publica uma partida nova pela API administrativa e altera somente seu status no PostgreSQL descartável; todas as asserções permanecem HTTP. Substituir essa preparação pelos endpoints públicos de início/cancelamento ao implementar #7/#10. Não há rotas de teste no produto nem asserções privadas de banco.
+Os testes de apostas verificam respostas HTTP, carteira, extrato e histórico próprio. O início usa a operação pública desde #7. Para preparar somente os estados encerrado/cancelado ainda sem operação pública de finalização/cancelamento nos tickets #9/#10, o teste altera o status de sua partida publicada no PostgreSQL descartável; todas as asserções permanecem HTTP. Não há rotas de teste no produto nem asserções privadas de banco.
+
+Os testes ao vivo observam HTTP, WebSocket nativo e o comando real `node dist/main.js`. A fábrica aceita fontes de tempo monotônico, aleatoriedade e agendamento somente como dependências de construção; não existem endpoints ou variáveis de ambiente para controlar gols. Cada cenário determinístico provisiona um banco com nome aleatório no PostgreSQL descartável e o remove ao terminar, evitando concorrência com o relógio do servidor principal. SQL só provisiona o namespace; não verifica estado privado. O relógio controlado percorre cinco minutos sem esperar cinco minutos reais. Os cenários cobrem gols, acréscimos, odds condicionais e raras, resultado garantido, capacidade concorrente, exclusão de times, reconexão, liderança única, pausa sem avanço durante indisponibilidade e retomada pelo ponto de entrada de produção.
+
+Uma regressão de cadência mantém cinco partidas reais e vinte leitores WebSocket por dez segundos. Um proxy na fronteira PostgreSQL atrasa cada resposta `ReadyForQuery` em 250 ms após a preparação, simulando respostas lentas do banco durante a execução. O teste também exige que os vinte leitores recebam o retrato inicial em até dois segundos. As asserções observam somente comportamento público: saúde HTTP disponível, retratos com placar/eventos coerentes, recepção repetida e nenhum intervalo acima de dois segundos (incluindo silêncio no fim da medição). Não há asserção de número de consultas.
+
+Outra regressão consulta a listagem pública de cinco partidas por vinte leitores HTTP concorrentes, com 125 ms de latência PostgreSQL controlada após a preparação. Cada resposta precisa chegar em até dois segundos e preservar todas as partidas. Isso protege a cadência do feed contra amplificação de consultas sob acesso simultâneo.
 
 Requisitos de desenvolvimento: Node.js 26, npm, Docker e Docker Compose disponíveis.
 

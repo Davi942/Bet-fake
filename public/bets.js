@@ -1,6 +1,6 @@
 (() => {
  const section=document.querySelector('#betting'),form=document.querySelector('#bet-form'),fixtureField=document.querySelector('#bet-fixture'),marketField=document.querySelector('#bet-market'),selectionField=document.querySelector('#bet-selection'),amountField=document.querySelector('#bet-amount'),submit=document.querySelector('#bet-submit'),quoteText=document.querySelector('#bet-quote'),status=document.querySelector('#bet-status'),history=document.querySelector('#bets-list'),fixtureFilter=document.querySelector('#bets-fixture-filter'),statusFilter=document.querySelector('#bets-status-filter');
- let owner=null,session=0,loadGeneration=0,fixtures=[],bets=[],pending=null,busy=false,synced=false,newOdd=null;
+ let owner=null,session=0,loadGeneration=0,fixtures=[],bets=[],pending=null,busy=false,synced=false,newOdd=null,liveConnected=false,historySynced=false,fixtureRevision=0;
  const date=new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',dateStyle:'short',timeStyle:'medium'});
  const labels={pending:'Pendente',won:'Ganha',lost:'Perdida',refunded:'Estornada'};
  const node=(tag,text)=>{const element=document.createElement(tag);if(text!==undefined)element.textContent=text;return element;};
@@ -51,11 +51,11 @@
  }
  async function load() {
   if(!owner)return;
-  const current=session,generation=++loadGeneration;
+  const current=session,generation=++loadGeneration,revision=fixtureRevision;
   try {
    const [published,own]=await Promise.all([request('/api/fixtures'),request('/api/bets')]);
    if(current!==session||generation!==loadGeneration)return;
-   synced=true;fixtures=published;bets=own;
+   historySynced=true;synced=liveConnected;if(revision===fixtureRevision)fixtures=published;bets=own;
    if(!pending&&!busy) {
     const selected=fixtureField.value;
     fixtureField.replaceChildren(option('','Selecione uma partida'),...fixtures.filter(f=>f.status==='scheduled').map(f=>option(f.id,`${f.homeTeamName} × ${f.awayTeamName}`)));
@@ -71,6 +71,14 @@
  document.querySelector('#bets-refresh').addEventListener('click',async()=>{await load();if(synced)status.textContent='Partidas e apostas sincronizadas. Revise os dados antes de confirmar.';});
  window.addEventListener('offline',()=>{if(!owner)return;loadGeneration++;synced=false;status.textContent='Sem conexão. Sincronize antes de fazer uma nova aposta.';update();});
  window.addEventListener('online',load);
+ document.addEventListener('live-connection',event=>{liveConnected=event.detail;synced=liveConnected&&historySynced;if(owner&&!synced)status.textContent='Sem sincronização ao vivo. Novas apostas bloqueadas até reconectar.';update();});
+ document.addEventListener('fixtures-snapshot',event=>{
+  const previous=fixtures.filter(f=>f.status==='scheduled').map(f=>f.id).join(',');
+  fixtureRevision++;fixtures=event.detail;if(!owner)return;synced=liveConnected&&historySynced;
+  const next=fixtures.filter(f=>f.status==='scheduled').map(f=>f.id).join(',');
+  if(previous!==next&&!pending&&!busy){const selected=fixtureField.value;fixtureField.replaceChildren(option('','Selecione uma partida'),...fixtures.filter(f=>f.status==='scheduled').map(f=>option(f.id,`${f.homeTeamName} × ${f.awayTeamName}`)));if(fixtures.some(f=>f.id===selected&&f.status==='scheduled'))fixtureField.value=selected;selections();}
+  update();
+ });
  form.addEventListener('submit',async event=>{
   event.preventDefault();if(!owner||busy||(!pending&&!synced))return;
   if(!pending) {
@@ -97,7 +105,7 @@
  document.addEventListener('session-changed',event=>{
   const next=event.detail?.role==='bettor'?event.detail.email:null;
   if(next===owner){if(owner)load();return;}
-  owner=next;session++;loadGeneration++;pending=null;busy=false;synced=false;newOdd=null;fixtures=[];bets=[];
+  owner=next;session++;loadGeneration++;pending=null;busy=false;synced=false;historySynced=false;newOdd=null;fixtures=[];bets=[];
   form.reset();fixtureField.replaceChildren();selectionField.replaceChildren();history.replaceChildren();fixtureFilter.replaceChildren(option('','Todas'));statusFilter.value='';status.textContent='';quoteText.textContent='';section.hidden=!owner;update();if(owner)load();
  });
  update();

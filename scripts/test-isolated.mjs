@@ -31,6 +31,8 @@ const environment = {
   DEMO_BETTOR_PASSWORD: 'ApostadorDemo123!',
   TEST_BASE_URL: `http://127.0.0.1:${port}`,
 };
+const requestedTests = process.argv.slice(2).filter(argument => argument.endsWith('.test.mjs'));
+const testOptions = process.argv.slice(2).filter(argument => !argument.endsWith('.test.mjs'));
 let running;
 let interrupted = false;
 for (const signal of ['SIGINT', 'SIGTERM']) {
@@ -58,7 +60,7 @@ console.log(`Testes isolados: ${project} em ${environment.TEST_BASE_URL}`);
 try {
   await compose('up', '--build', '--wait', '--wait-timeout', '180');
   if (interrupted) throw new Error('Testes interrompidos.');
-  await run(process.execPath, ['--test', '--test-concurrency=1', ...process.argv.slice(2), 'test/*.test.mjs']);
+  await run(process.execPath, ['--test', '--test-concurrency=1', ...testOptions, ...(requestedTests.length ? requestedTests : ['test/*.test.mjs'])]);
 } catch (error) {
   console.error(error.message);
   process.exitCode = 1;
