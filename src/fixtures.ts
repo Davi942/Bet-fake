@@ -48,7 +48,7 @@ export class Fixtures {
   const homeOverall=overall(fixture.homeTeamId),awayOverall=overall(fixture.awayTeamId);
   const {home,away,...published}=fixture;
   const markets=fixture.status==='scheduled'?pregameMarkets(homeOverall,awayOverall):liveMarkets(homeOverall,awayOverall,home,away,(MATCH_DURATION_MS-fixture.elapsedMs)/MATCH_DURATION_MS);
-  if(['finished','cancelled'].includes(fixture.status))for(const market of Object.values(markets)){market.open=false;market.selections.forEach(selection=>{selection.available=false;});}
+  if(['finished','cancelled'].includes(fixture.status)||fixture.elapsedMs>=MATCH_DURATION_MS)for(const market of Object.values(markets)){market.open=false;market.selections.forEach(selection=>{selection.available=false;});}
   return {...published,lineups,homeOverall,awayOverall,minute:Math.floor(fixture.elapsedMs/MATCH_DURATION_MS*MATCH_MINUTES),score:{home,away},markets};
  }
  async start(id:string,raw:unknown) {
