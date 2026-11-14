@@ -18,11 +18,11 @@
   if(value){const date=new Date(value);input.value=new Date(date.getTime()-date.getTimezoneOffset()*60000).toISOString().slice(0,16);}
   label.append(input);form.append(label);return input;
  }
- function submit(form,text,task) {
+ function submit(form,text,task,success='Partida salva. Escalações publicadas permanecem fixadas.') {
   const button=node('button',text);form.append(button);
   form.addEventListener('submit',async event=>{
    event.preventDefault();button.disabled=true;status.textContent='Aguarde…';
-   try {await task();await load();status.textContent='Partida salva. Escalações publicadas permanecem fixadas.';}
+   try {await task();await load();status.textContent=success;}
    catch(error){status.textContent=error.message;}finally{button.disabled=false;}
   });
  }
@@ -32,6 +32,7 @@
   const heading=node('h3'),link=node('a',`${fixture.homeTeamName} × ${fixture.awayTeamName}`);link.href=`#fixture-${fixture.id}`;heading.append(link);item.append(heading);
   item.dataset.admin=String(admin);
   const state=node('p');state.className='fixture-state';item.append(state);
+  const cancellationReason=node('p');cancellationReason.className='fixture-cancellation-reason';item.append(cancellationReason);
   const scoreboard=node('p'),score=node('strong'),clock=node('span');score.className='fixture-score';score.setAttribute('aria-live','polite');clock.className='fixture-clock';scoreboard.append(score,document.createTextNode(' · '),clock);item.append(scoreboard);
   const events=node('ol');events.className='fixture-events';events.setAttribute('aria-label','Eventos da partida');events.setAttribute('role','log');item.append(events);
   item.append(node('p',`Overall fixado: ${fixture.homeTeamName} ${number.format(fixture.homeOverall)} · ${fixture.awayTeamName} ${number.format(fixture.awayOverall)}`));
@@ -54,12 +55,17 @@
    const form=node('form');form.append(node('h4','Alterar horário previsto'));dateField(form,fixture.scheduledAt);
    form.className='fixture-reschedule';
    submit(form,'Salvar horário',()=>request(`/api/fixtures/${fixture.id}`,{scheduledAt:scheduledAt(form)},'PATCH'));item.append(form);
+   const cancelForm=node('form'),reasonLabel=node('label','Motivo do cancelamento'),reason=node('textarea');
+   reason.name='reason';reason.required=true;reason.maxLength=500;reasonLabel.append(reason);cancelForm.append(reasonLabel);
+   cancelForm.className='fixture-cancel';
+   submit(cancelForm,'Cancelar e estornar apostas',()=>request(`/api/fixtures/${fixture.id}/cancel`,{reason:reason.value}),'Partida cancelada. Apostas estornadas.');item.append(cancelForm);
   }
   patch(item,fixture);return item;
  }
  function patch(item,fixture) {
   const labels={scheduled:'Agendada',in_progress:'Em andamento',finished:'Encerrada',cancelled:'Cancelada'};
   item.querySelector('.fixture-state').textContent=`${displayDate.format(new Date(fixture.scheduledAt))} — America/Sao_Paulo · ${labels[fixture.status]}`;
+  const cancellationReason=item.querySelector('.fixture-cancellation-reason');cancellationReason.hidden=!fixture.cancellationReason;cancellationReason.textContent=fixture.cancellationReason?`Motivo do cancelamento: ${fixture.cancellationReason}`:'';
   item.querySelector('.fixture-score').textContent=`Placar: ${fixture.score.home} × ${fixture.score.away}`;
   const seconds=Math.floor(fixture.elapsedMs/300000*94*60),minutes=Math.floor(seconds/60);
   item.querySelector('.fixture-clock').textContent=`Relógio: ${minutes>=90?'90+'+(minutes-90):String(minutes).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')} · 90 min + 4 de acréscimos`;
@@ -70,7 +76,7 @@
    table.previousElementSibling.textContent=`${key==='result'?'Resultado da partida (1X2)':'Placar exato'} — ${market.open?'aberto':'fechado'}`;
    for(const selection of market.selections){const row=table.querySelector(`tr[data-selection="${selection.key}"]`);row.lastElementChild.textContent=market.open&&selection.available?selection.odd.replace('.',','):'Indisponível';row.dataset.available=String(market.open&&selection.available);}
   }
-  if(fixture.status!=='scheduled'){item.querySelector('.fixture-start')?.remove();item.querySelector('.fixture-reschedule')?.remove();}
+  if(fixture.status!=='scheduled'){item.querySelector('.fixture-start')?.remove();item.querySelector('.fixture-reschedule')?.remove();item.querySelector('.fixture-cancel')?.remove();}
   const start=item.querySelector('.fixture-start');if(start)start.disabled=!connected;
  }
  function apply(fixtures) {

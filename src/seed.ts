@@ -74,7 +74,8 @@ export async function initializeDatabase(pool: Pool) {
     `);
     await migrateAuthentication(client);
     await client.query(`ALTER TABLE fixtures ADD COLUMN IF NOT EXISTS home_team_name text;
-      ALTER TABLE fixtures ADD COLUMN IF NOT EXISTS away_team_name text;`);
+      ALTER TABLE fixtures ADD COLUMN IF NOT EXISTS away_team_name text;
+      ALTER TABLE fixtures ADD COLUMN IF NOT EXISTS cancellation_reason text;`);
     for (const user of [
       { id: 'demo-admin', name: 'Administrador de demonstração', email: 'admin@betfake.local', role: 'admin', password: process.env.DEMO_ADMIN_PASSWORD ?? 'AdminDemo123!' },
       { id: 'demo-bettor', name: 'Apostador de demonstração', email: 'apostador@betfake.local', role: 'bettor', password: process.env.DEMO_BETTOR_PASSWORD ?? 'ApostadorDemo123!' },
