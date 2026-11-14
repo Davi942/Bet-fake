@@ -2,7 +2,8 @@ import { BadRequestException, Body, ConflictException, Controller, Get, Injectab
 import { randomUUID } from 'node:crypto';
 import { Auth } from './auth';
 import { Database } from './database';
-import { pregameMarkets } from './markets';
+import { liveMarkets, pregameMarkets } from './markets';
+import { MATCH_DURATION_MS } from './simulation-boundary';
 
 type Request={headers:Record<string,string|undefined>};
 interface BetRow {
@@ -49,10 +50,13 @@ export class Bets {
    if((await client.query('SELECT id FROM wallet_entries WHERE user_id=$1 AND operation_key=$2',[user.id,body.operationKey])).rowCount)
     throw new ConflictException('Identificador já usado para outra operação financeira.');
    if(!fixture) throw new NotFoundException('Partida não encontrada.');
-   if(fixture.status!=='scheduled') throw new BadRequestException('A partida não está aberta para apostas pré-jogo.');
+   if(!['scheduled','in_progress'].includes(fixture.status)) throw new BadRequestException('A partida não está aberta para apostas.');
    const lineups=(await client.query('SELECT team_id,overall FROM fixture_lineups WHERE fixture_id=$1',[body.fixtureId])).rows;
    const overall=(id:string)=>lineups.filter(p=>p.team_id===id).reduce((sum,p)=>sum+p.overall,0)/11;
-   const market=pregameMarkets(overall(fixture.home_team_id),overall(fixture.away_team_id))[body.market as 'result'|'exactScore'];
+   const markets=fixture.status==='scheduled'
+    ?pregameMarkets(overall(fixture.home_team_id),overall(fixture.away_team_id))
+    :liveMarkets(overall(fixture.home_team_id),overall(fixture.away_team_id),fixture.home_score,fixture.away_score,(MATCH_DURATION_MS-fixture.elapsed_ms)/MATCH_DURATION_MS);
+   const market=markets[body.market as 'result'|'exactScore'];
    const quote=market.selections.find(s=>s.key===body.selection);
    if(!market.open||!quote||quote.probability<=0) throw new BadRequestException('Mercado fechado ou resultado indisponível.');
    if(quote.odd!==body.confirmedOdd) throw new ConflictException({message:'A odd mudou. Revise a nova cotação e confirme novamente.',code:'ODD_CHANGED',currentOdd:quote.odd});
