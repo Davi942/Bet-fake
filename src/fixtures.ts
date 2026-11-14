@@ -5,10 +5,10 @@ import { Auth } from './auth';
 import { goalRates, liveMarkets, pregameMarkets } from './markets';
 import { MATCH_DURATION_MS, MATCH_MINUTES, MatchEvent, SimulationBoundary } from './simulation-boundary';
 type Request={headers:Record<string,string|undefined>};
-type FixtureRow={id:string;homeTeamId:string;awayTeamId:string;homeTeamName:string;awayTeamName:string;scheduledAt:Date;status:string;elapsedMs:number;home:number;away:number;events:MatchEvent[]};
+type FixtureRow={id:string;homeTeamId:string;awayTeamId:string;homeTeamName:string;awayTeamName:string;scheduledAt:Date;status:string;cancellationReason:string|null;elapsedMs:number;home:number;away:number;events:MatchEvent[]};
 type LineupRow={teamId:string;playerId:string;name:string;position:string;overall:number};
-type FixtureView={id:string;homeTeamId:string;awayTeamId:string;homeTeamName:string;awayTeamName:string;scheduledAt:Date;status:string;elapsedMs:number;events:MatchEvent[];lineups:LineupRow[];homeOverall:number;awayOverall:number;minute:number;score:{home:number;away:number};markets:ReturnType<typeof liveMarkets>};
-const FIXTURE_COLUMNS=`f.id,f.home_team_id AS "homeTeamId",f.away_team_id AS "awayTeamId",f.home_team_name AS "homeTeamName",f.away_team_name AS "awayTeamName",f.scheduled_at AS "scheduledAt",f.status,f.elapsed_ms AS "elapsedMs",f.home_score AS home,f.away_score AS away,f.events`;
+type FixtureView={id:string;homeTeamId:string;awayTeamId:string;homeTeamName:string;awayTeamName:string;scheduledAt:Date;status:string;cancellationReason:string|null;elapsedMs:number;events:MatchEvent[];lineups:LineupRow[];homeOverall:number;awayOverall:number;minute:number;score:{home:number;away:number};markets:ReturnType<typeof liveMarkets>};
+const FIXTURE_COLUMNS=`f.id,f.home_team_id AS "homeTeamId",f.away_team_id AS "awayTeamId",f.home_team_name AS "homeTeamName",f.away_team_name AS "awayTeamName",f.scheduled_at AS "scheduledAt",f.status,f.cancellation_reason AS "cancellationReason",f.elapsed_ms AS "elapsedMs",f.home_score AS home,f.away_score AS away,f.events`;
 function input(raw:unknown) {
  if(!raw || typeof raw!=='object'||Array.isArray(raw)) throw new BadRequestException('Dados inválidos.');
  return raw as Record<string,unknown>;
@@ -96,6 +96,40 @@ export class Fixtures {
   if(!result.rowCount) {await this.detail(id);throw new BadRequestException('Somente partidas agendadas podem mudar de horário.');}
   return this.detail(id);
  }
+ async cancel(id:string,raw:unknown) {
+  const body=input(raw);
+  if(Object.keys(body).length!==1||typeof body.reason!=='string'||!body.reason.trim()||body.reason.trim().length>500)
+   throw new BadRequestException('Informe um motivo de cancelamento com até 500 caracteres.');
+  const reason=body.reason.trim(),client=await this.db.pool.connect();
+  try {
+   await client.query('BEGIN');
+   const fixture=(await client.query('SELECT status FROM fixtures WHERE id=$1 FOR UPDATE',[id])).rows[0];
+   if(!fixture)throw new NotFoundException('Partida não encontrada.');
+   if(fixture.status!=='scheduled')throw new ConflictException('Somente partidas agendadas podem ser canceladas.');
+   type Pending={id:string;user_id:string;stake_cents:string};
+   const bets=(await client.query<Pending>(`SELECT id,user_id,stake_cents FROM bets
+    WHERE fixture_id=$1 AND status='pending' ORDER BY user_id,id FOR UPDATE`,[id])).rows;
+   const balances=new Map<string,bigint>();
+   for(const owner of [...new Set(bets.map(bet=>bet.user_id))].sort()){
+    const wallet=(await client.query<{balance_cents:string}>
+     ('SELECT balance_cents FROM wallets WHERE user_id=$1 FOR UPDATE',[owner])).rows[0];
+    if(!wallet)throw new Error('Carteira ausente durante estorno.');
+    balances.set(owner,BigInt(wallet.balance_cents));
+   }
+   for(const bet of bets){
+    const amount=BigInt(bet.stake_cents),balance=balances.get(bet.user_id)!+amount;
+    balances.set(bet.user_id,balance);
+    await client.query('UPDATE wallets SET balance_cents=$2 WHERE user_id=$1',[bet.user_id,balance.toString()]);
+    await client.query(`INSERT INTO wallet_entries(id,user_id,kind,amount_cents,balance_after_cents,operation_key,bet_id,fixture_id,created_at)
+     VALUES($1,$2,'refund',$3,$4,$5,$6,$7,clock_timestamp())`,
+     [randomUUID(),bet.user_id,amount.toString(),balance.toString(),`refund:${bet.id}`,bet.id,id]);
+    await client.query("UPDATE bets SET status='refunded' WHERE id=$1",[bet.id]);
+   }
+   await client.query("UPDATE fixtures SET status='cancelled',cancellation_reason=$2 WHERE id=$1",[id,reason]);
+   await client.query('COMMIT');
+  }catch(error){try{await client.query('ROLLBACK');}catch{}throw error;}finally{client.release();}
+  return this.detail(id);
+ }
 }
 @Controller('api/fixtures')
 export class FixturesController {
@@ -104,5 +138,6 @@ export class FixturesController {
  @Get(':id') detail(@Param('id') id:string){return this.fixtures.detail(id);}
  @Post() async publish(@Req() request:Request,@Body() raw:unknown){await this.auth.authenticate(request,'admin');return this.fixtures.publish(raw);}
  @Post(':id/start') async start(@Req() request:Request,@Param('id') id:string,@Body() raw:unknown){await this.auth.authenticate(request,'admin');return this.fixtures.start(id,raw);}
+ @Post(':id/cancel') async cancel(@Req() request:Request,@Param('id') id:string,@Body() raw:unknown){await this.auth.authenticate(request,'admin');return this.fixtures.cancel(id,raw);}
  @Patch(':id') async reschedule(@Req() request:Request,@Param('id') id:string,@Body() raw:unknown){await this.auth.authenticate(request,'admin');return this.fixtures.reschedule(id,raw);}
 }
