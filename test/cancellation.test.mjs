@@ -10,8 +10,8 @@ test('admin cancels only a scheduled fixture with a public reason and refunds ea
    const account={displayName:'Estorno '+index,email:'refund'+index+'@example.com',password:'Password123!'};
    assert.equal((await call('/api/auth/signup',account)).status,201);
    const bettor=(await call('/api/auth/login',account)).headers.get('set-cookie');
-   const selection=index?'draw':'home',odd=fixture.markets.result.selections.find(item=>item.key===selection).odd;
-   const wager={fixtureId:fixture.id,market:'result',selection,stakeCents:100+index,confirmedOdd:odd,operationKey:'refund-bet-'+index};
+   const market=index?'exactScore':'result',selection=index?'0-0':'home',odd=fixture.markets[market].selections.find(item=>item.key===selection).odd;
+   const wager={fixtureId:fixture.id,market,selection,stakeCents:100+index,confirmedOdd:odd,operationKey:'refund-bet-'+index};
    assert.equal((await call('/api/bets',wager,bettor)).status,201);bettors.push({bettor,wager});
   }
   assert.equal((await call('/api/fixtures/'+fixture.id+'/cancel',{reason:'Chuva forte'},bettors[0].bettor)).status,403);
