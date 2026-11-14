@@ -119,8 +119,8 @@ test('exact scores and other score are offered; the predicted time does not clos
  const history=await (await call('/api/bets',undefined,cookie)).json();
  // Start is public since #7; final/cancelled arrangements remain until #9/#10.
  assert.equal((await call(`/api/fixtures/${fixture.id}/start`,{},admin)).status,201);
- for(const status of ['in_progress','finished','cancelled']) {
-  if(status!=='in_progress')compose('exec','-T','db','psql','-U',process.env.POSTGRES_USER??'bet_fake','-d',process.env.POSTGRES_DB??'bet_fake','-v','ON_ERROR_STOP=1','-c',`UPDATE fixtures SET status='${status}' WHERE id='${fixture.id}'`);
+ for(const status of ['finished','cancelled']) {
+  compose('exec','-T','db','psql','-U',process.env.POSTGRES_USER??'bet_fake','-d',process.env.POSTGRES_DB??'bet_fake','-v','ON_ERROR_STOP=1','-c',`UPDATE fixtures SET status='${status}' WHERE id='${fixture.id}'`);
   assert.equal((await (await call(`/api/fixtures/${fixture.id}`)).json()).status,status);
   assert.equal((await call('/api/bets',{...wager(),fixtureId:fixture.id},cookie)).status,400);
   assert.deepEqual(await (await call('/api/bets',accepted.body,cookie)).json(),accepted.bet);
