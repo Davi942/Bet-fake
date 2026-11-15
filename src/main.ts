@@ -13,6 +13,8 @@ import { Bets, BetsController } from './bets';
 import { Simulation } from './simulation';
 import { SimulationBoundary, SimulationOptions } from './simulation-boundary';
 import { LiveGateway } from './live-gateway';
+import { AdminFinance, AdminFinanceController } from './admin-finance';
+import { AdminAudit, AdminAuditController } from './admin-audit';
 import { WsAdapter } from '@nestjs/platform-ws';
 
 @Controller('api')
@@ -43,7 +45,7 @@ class ApiController {
   }
 }
 
-@Module({ controllers: [ApiController, AuthController, TeamsController, FixturesController, WalletController, BetsController], providers: [Database, Auth, Clock, PasswordVerification, Teams, Fixtures, Wallet, Bets, SimulationBoundary, Simulation, LiveGateway] })
+@Module({ controllers: [ApiController, AuthController, TeamsController, FixturesController, WalletController, BetsController, AdminFinanceController, AdminAuditController], providers: [Database, Auth, Clock, PasswordVerification, Teams, Fixtures, Wallet, Bets, AdminFinance, AdminAudit, SimulationBoundary, Simulation, LiveGateway] })
 class AppModule {}
 
 export async function createApplication(options: { now?: () => number; verifyPassword?: PasswordVerification['verify']; simulation?:SimulationOptions } = {}) {
