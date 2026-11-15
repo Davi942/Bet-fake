@@ -64,3 +64,22 @@ test('player, lineup and fixture actions are audited with their changed fields a
  }finally{await app.close();}
  `),/admin-audit-actions-ok/);
 });
+
+test('archiving a starter or team records the lineup removed by that action',()=>{
+ assert.match(liveCase(`${liveSetup}
+ try {
+  const first=await (await call('/api/teams/demo-team-3')).json();
+  const starter=first.players.find(player=>player.starter);
+  assert.equal((await call('/api/teams/demo-team-3/players/'+starter.id+'/archive',{},cookie)).status,201);
+  const second=await (await call('/api/teams/demo-team-4')).json();
+  assert.equal((await call('/api/teams/demo-team-4/archive',{},cookie)).status,201);
+  const entries=await (await call('/api/admin/audit',undefined,cookie)).json();
+  assert.equal(entries.length,2);
+  assert.deepEqual(entries[0].changes.before.lineupPlayerIds,[...second.lineup].sort());
+  assert.deepEqual(entries[0].changes.after.lineupPlayerIds,[]);
+  assert.deepEqual(entries[1].changes.before.lineupPlayerIds,[...first.lineup].sort());
+  assert.deepEqual(entries[1].changes.after.lineupPlayerIds,first.lineup.filter(id=>id!==starter.id).sort());
+  console.log('admin-audit-lineup-ok');
+ }finally{await app.close();}
+ `),/admin-audit-lineup-ok/);
+});

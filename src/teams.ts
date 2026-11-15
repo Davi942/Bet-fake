@@ -101,17 +101,20 @@ export class Teams {
  await client.query('BEGIN');
  const team=await client.query('SELECT id FROM teams WHERE id=$1 FOR UPDATE',[teamId]);
  if(!team.rowCount) throw new NotFoundException('Time não encontrado.');
+ const lineupPlayerIds=(await client.query('SELECT player_id FROM current_lineups WHERE team_id=$1 ORDER BY player_id',[teamId])).rows.map(row=>row.player_id);
  if(playerId) {
  const before=(await client.query('SELECT archived FROM players WHERE id=$1 AND team_id=$2 FOR UPDATE',[playerId,teamId])).rows[0];
  const result=await client.query('UPDATE players SET archived=true WHERE id=$1 AND team_id=$2 RETURNING id',[playerId,teamId]);
  if(!result.rowCount) throw new NotFoundException('Jogador não encontrado.');
  await client.query('DELETE FROM current_lineups WHERE team_id=$1 AND player_id=$2',[teamId,playerId]);
- await recordAdminAction(client,actorId,'player.archived','player',playerId,{archived:before.archived},{archived:true});
+ await recordAdminAction(client,actorId,'player.archived','player',playerId,
+  {archived:before.archived,lineupPlayerIds},{archived:true,lineupPlayerIds:lineupPlayerIds.filter(id=>id!==playerId)});
  } else {
  const before=(await client.query('SELECT archived FROM teams WHERE id=$1',[teamId])).rows[0];
  await client.query('UPDATE teams SET archived=true WHERE id=$1',[teamId]);
  await client.query('DELETE FROM current_lineups WHERE team_id=$1',[teamId]);
- await recordAdminAction(client,actorId,'team.archived','team',teamId,{archived:before.archived},{archived:true});
+ await recordAdminAction(client,actorId,'team.archived','team',teamId,
+  {archived:before.archived,lineupPlayerIds},{archived:true,lineupPlayerIds:[]});
  }
  await client.query('COMMIT');return this.detail(teamId);
  } catch(error) {await client.query('ROLLBACK');throw error;} finally {client.release();}

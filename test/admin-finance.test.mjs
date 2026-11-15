@@ -31,6 +31,10 @@ test('admin dashboard counts accepted, refunded, pending and settled stakes with
   assert.equal(dashboard.houseResultCents,0);
   assert.equal((await call('/api/fixtures/'+second.id+'/cancel',{reason:'Chuva'},cookie)).status,201);
   assert.equal((await call('/api/fixtures/'+first.id+'/start',{},cookie)).status,201);
+  dashboard=await read();
+  assert.equal(dashboard.totalStakedCents,450);assert.equal(dashboard.refundsCents,200);
+  assert.equal(dashboard.pendingCents,250);assert.equal(dashboard.houseResultCents,0);
+  assert.deepEqual(dashboard.fixtures,{scheduled:0,inProgress:1,finished:0,cancelled:1});
   await tick();await advance(300000);
   dashboard=await read();
   assert.equal(dashboard.totalStakedCents,450);
