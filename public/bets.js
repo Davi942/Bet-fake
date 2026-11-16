@@ -1,6 +1,6 @@
 (() => {
  const section=document.querySelector('#betting'),form=document.querySelector('#bet-form'),fixtureField=document.querySelector('#bet-fixture'),marketField=document.querySelector('#bet-market'),selectionField=document.querySelector('#bet-selection'),amountField=document.querySelector('#bet-amount'),submit=document.querySelector('#bet-submit'),quoteText=document.querySelector('#bet-quote'),status=document.querySelector('#bet-status'),history=document.querySelector('#bets-list'),fixtureFilter=document.querySelector('#bets-fixture-filter'),statusFilter=document.querySelector('#bets-status-filter');
- let owner=null,session=0,loadGeneration=0,fixtures=[],bets=[],pending=null,busy=false,synced=false,newOdd=null,liveConnected=false,historySynced=false,fixtureRevision=0;
+ let owner=null,session=0,loadGeneration=0,fixtures=[],bets=[],pending=null,busy=false,synced=false,newOdd=null,liveConnected=false,historySynced=false,fixtureRevision=0,historyPulseBusy=false,historyPulseQueued=false,historyPulseGeneration=0,loadPending=false;
  const date=new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',dateStyle:'short',timeStyle:'medium'});
  const labels={pending:'Pendente',won:'Ganha',lost:'Perdida',refunded:'Estornada'};
  const node=(tag,text)=>{const element=document.createElement(tag);if(text!==undefined)element.textContent=text;return element;};
@@ -62,6 +62,7 @@
  }
  async function load() {
   if(!owner)return;
+  historyPulseGeneration++;loadPending=true;
   const current=session,generation=++loadGeneration,revision=fixtureRevision;
   try {
    const [published,own]=await Promise.all([request('/api/fixtures'),request('/api/bets')]);
@@ -72,7 +73,28 @@
    }
    renderHistory();update();
   }catch(error){if(current!==session||generation!==loadGeneration)return;synced=false;status.textContent=`Sem sincronização. ${error.message} Sincronize antes de fazer uma nova aposta.`;update();}
+  finally{if(current===session&&generation===loadGeneration){loadPending=false;if(historyPulseQueued){historyPulseQueued=false;queueMicrotask(refreshHistory);}}}
  }
+ async function refreshHistory() {
+  if(!owner)return;
+  if(loadPending){historyPulseQueued=true;return;}
+  if(historyPulseBusy){historyPulseQueued=true;return;}
+  const current=session,revision=historyPulseGeneration;
+  historyPulseBusy=true;
+  try {
+   const own=await request('/api/bets');
+   if(current!==session||revision!==historyPulseGeneration)return;
+   const recovered=!historySynced;
+   historySynced=true;synced=liveConnected;
+   if(JSON.stringify(own)!==JSON.stringify(bets)){bets=own;renderHistory();}
+   if(recovered)status.textContent='Apostas sincronizadas. Revise os dados antes de confirmar.';
+   update();
+  }catch(error){
+   if(current!==session||revision!==historyPulseGeneration)return;
+   historySynced=false;synced=false;status.textContent=`Sem sincronização das apostas. ${error.message} Novas apostas bloqueadas até reconectar.`;update();
+  }finally{historyPulseBusy=false;if(historyPulseQueued){historyPulseQueued=false;queueMicrotask(refreshHistory);}}
+ }
+ document.addEventListener('financial-refresh',refreshHistory);
  for(const field of [fixtureField,marketField])field.addEventListener('change',()=>{newOdd=null;selectionField.value='';selections();});
  selectionField.addEventListener('change',()=>{newOdd=null;update();});amountField.addEventListener('input',update);
  fixtureFilter.addEventListener('change',renderHistory);statusFilter.addEventListener('change',renderHistory);
@@ -114,7 +136,7 @@
  document.addEventListener('session-changed',event=>{
   const next=event.detail?.role==='bettor'?event.detail.email:null;
   if(next===owner){if(owner)load();return;}
-  owner=next;session++;loadGeneration++;pending=null;busy=false;synced=false;historySynced=false;newOdd=null;fixtures=[];bets=[];
+  owner=next;session++;loadGeneration++;historyPulseGeneration++;historyPulseQueued=false;pending=null;busy=false;synced=false;historySynced=false;newOdd=null;fixtures=[];bets=[];
   form.reset();fixtureField.replaceChildren();selectionField.replaceChildren();history.replaceChildren();fixtureFilter.replaceChildren(option('','Todas'));statusFilter.value='';status.textContent='';quoteText.textContent='';section.hidden=!owner;update();if(owner)load();
  });
  update();

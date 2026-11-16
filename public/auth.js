@@ -11,6 +11,7 @@ function formatMoneyCents(cents) {
 
 function clearSession() {
   sessionGeneration++;
+  authStatus.textContent = 'Sessão expirada ou encerrada. Entre novamente, revise os dados e confirme a ação.';
   document.dispatchEvent(new CustomEvent('session-changed', { detail: null }));
   personal.hidden = administration.hidden = true;
   document.querySelector('#current-user').textContent = '';
@@ -81,7 +82,7 @@ document.querySelector('#logout').addEventListener('click', async () => {
 });
 async function refreshSession(initial = false) {
   try { await showSession(await api('/api/auth/me')); }
-  catch (error) { authStatus.textContent = initial && error.status === 401 ? '' : error.message; }
+  catch (error) { if (initial && error.status === 401) authStatus.textContent = ''; else if (error.status !== 401) authStatus.textContent = error.message; }
 }
 refreshSession(true);
 document.addEventListener('visibilitychange', () => { if (!document.hidden && access.hidden) refreshSession(); });
