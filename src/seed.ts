@@ -116,6 +116,15 @@ export async function initializeDatabase(pool: Pool) {
     await migrateTeams(client);
     await migrateWallet(client);
     await migrateBets(client);
+    await client.query(`CREATE TABLE IF NOT EXISTS admin_audit (
+      id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      actor_id text NOT NULL REFERENCES users(id),
+      action text NOT NULL,
+      target_type text NOT NULL,
+      target_id text NOT NULL,
+      changes jsonb NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT clock_timestamp()
+    )`);
     await client.query(`ALTER TABLE fixtures ADD COLUMN IF NOT EXISTS elapsed_ms integer NOT NULL DEFAULT 0;
       ALTER TABLE fixtures ADD COLUMN IF NOT EXISTS home_score integer NOT NULL DEFAULT 0;
       ALTER TABLE fixtures ADD COLUMN IF NOT EXISTS away_score integer NOT NULL DEFAULT 0;

@@ -2,6 +2,7 @@ import { BadRequestException, Body, ConflictException, Controller, Get, Injectab
 import { randomUUID } from 'node:crypto';
 import { Database } from './database';
 import { Auth } from './auth';
+import { recordAdminAction } from './admin-audit';
 import { goalRates, liveMarkets, pregameMarkets } from './markets';
 import { MATCH_DURATION_MS, MATCH_MINUTES, MatchEvent, SimulationBoundary } from './simulation-boundary';
 type Request={headers:Record<string,string|undefined>};
@@ -51,7 +52,7 @@ export class Fixtures {
   if(['finished','cancelled'].includes(fixture.status)||fixture.elapsedMs>=MATCH_DURATION_MS)for(const market of Object.values(markets)){market.open=false;market.selections.forEach(selection=>{selection.available=false;});}
   return {...published,lineups,homeOverall,awayOverall,minute:Math.floor(fixture.elapsedMs/MATCH_DURATION_MS*MATCH_MINUTES),score:{home,away},markets};
  }
- async start(id:string,raw:unknown) {
+ async start(id:string,raw:unknown,actorId:string) {
   if(Object.keys(input(raw)).length) throw new BadRequestException('O início não aceita controles de resultado ou odds.');
   const client=await this.db.pool.connect();
   try {
@@ -67,11 +68,12 @@ export class Fixtures {
    const rates=goalRates(strengths.find(s=>s.team_id===fixture.home_team_id).overall,strengths.find(s=>s.team_id===fixture.away_team_id).overall);
    const timeline=this.simulation.timeline(rates);
    await client.query(`UPDATE fixtures SET status='in_progress',events='[{"type":"kickoff","minute":0}]',goal_plan=$2 WHERE id=$1`,[id,JSON.stringify(timeline)]);
+   await recordAdminAction(client,actorId,'fixture.started','fixture',id,{status:'scheduled'},{status:'in_progress'});
    await client.query('COMMIT');
   }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
   return this.detail(id);
  }
- async publish(raw:unknown) {
+ async publish(raw:unknown,actorId:string) {
   const body=input(raw),scheduledAt=scheduledDate(body.scheduledAt);
   if(Object.keys(body).some(key=>!['homeTeamId','awayTeamId','scheduledAt'].includes(key))) throw new BadRequestException('Informe somente os times e o horário previsto.');
   if(typeof body.homeTeamId!=='string'||typeof body.awayTeamId!=='string'||!body.homeTeamId||!body.awayTeamId||body.homeTeamId===body.awayTeamId) throw new BadRequestException('Selecione dois times diferentes.');
@@ -84,19 +86,28 @@ export class Fixtures {
    if(teams.length!==2||teams.some(t=>t.archived)||teams.some(t=>{const lineup=players.filter(p=>p.team_id===t.id);return lineup.length!==11||lineup.some(p=>p.archived)||lineup.filter(p=>p.position==='goleiro').length!==1;})) throw new BadRequestException('Cada time deve estar ativo e ter 11 titulares ativos: 1 goleiro e 10 jogadores de linha.');
    await client.query(`INSERT INTO fixtures(id,home_team_id,away_team_id,home_team_name,away_team_name,scheduled_at,status) VALUES($1,$2,$3,$4,$5,$6,'scheduled')`,[id,body.homeTeamId,body.awayTeamId,teams.find(t=>t.id===body.homeTeamId).name,teams.find(t=>t.id===body.awayTeamId).name,scheduledAt]);
    await client.query(`INSERT INTO fixture_lineups(fixture_id,team_id,player_id,name,position,overall) SELECT $1,p.team_id,p.id,p.name,p.position,p.overall FROM players p JOIN current_lineups l ON l.player_id=p.id AND l.team_id=p.team_id WHERE l.team_id=ANY($2::text[])`,[id,[body.homeTeamId,body.awayTeamId]]);
+   await recordAdminAction(client,actorId,'fixture.published','fixture',id,null,{homeTeamId:body.homeTeamId,awayTeamId:body.awayTeamId,scheduledAt,status:'scheduled'});
    await client.query('COMMIT');
   }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
   return this.detail(id);
  }
- async reschedule(id:string,raw:unknown) {
+ async reschedule(id:string,raw:unknown,actorId:string) {
   const body=input(raw);
   if(Object.keys(body).length!==1||!('scheduledAt' in body)) throw new BadRequestException('Somente o horário previsto pode ser alterado.');
   const date=scheduledDate(body.scheduledAt);
-  const result=await this.db.pool.query("UPDATE fixtures SET scheduled_at=$2 WHERE id=$1 AND status='scheduled' RETURNING id",[id,date]);
-  if(!result.rowCount) {await this.detail(id);throw new BadRequestException('Somente partidas agendadas podem mudar de horário.');}
+  const client=await this.db.pool.connect();
+  try {
+   await client.query('BEGIN');
+   const before=(await client.query('SELECT status,scheduled_at FROM fixtures WHERE id=$1 FOR UPDATE',[id])).rows[0];
+   if(!before)throw new NotFoundException('Partida não encontrada.');
+   if(before.status!=='scheduled')throw new BadRequestException('Somente partidas agendadas podem mudar de horário.');
+   await client.query('UPDATE fixtures SET scheduled_at=$2 WHERE id=$1',[id,date]);
+   await recordAdminAction(client,actorId,'fixture.rescheduled','fixture',id,{scheduledAt:before.scheduled_at},{scheduledAt:date});
+   await client.query('COMMIT');
+  }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
   return this.detail(id);
  }
- async cancel(id:string,raw:unknown) {
+ async cancel(id:string,raw:unknown,actorId:string) {
   const body=input(raw);
   if(Object.keys(body).length!==1||typeof body.reason!=='string'||!body.reason.trim()||body.reason.trim().length>500)
    throw new BadRequestException('Informe um motivo de cancelamento com até 500 caracteres.');
@@ -126,6 +137,7 @@ export class Fixtures {
     await client.query("UPDATE bets SET status='refunded' WHERE id=$1",[bet.id]);
    }
    await client.query("UPDATE fixtures SET status='cancelled',cancellation_reason=$2 WHERE id=$1",[id,reason]);
+   await recordAdminAction(client,actorId,'fixture.cancelled','fixture',id,{status:'scheduled'},{status:'cancelled',reason});
    await client.query('COMMIT');
   }catch(error){try{await client.query('ROLLBACK');}catch{}throw error;}finally{client.release();}
   return this.detail(id);
@@ -136,8 +148,8 @@ export class FixturesController {
  constructor(private readonly fixtures:Fixtures,private readonly auth:Auth) {}
  @Get() list(){return this.fixtures.list();}
  @Get(':id') detail(@Param('id') id:string){return this.fixtures.detail(id);}
- @Post() async publish(@Req() request:Request,@Body() raw:unknown){await this.auth.authenticate(request,'admin');return this.fixtures.publish(raw);}
- @Post(':id/start') async start(@Req() request:Request,@Param('id') id:string,@Body() raw:unknown){await this.auth.authenticate(request,'admin');return this.fixtures.start(id,raw);}
- @Post(':id/cancel') async cancel(@Req() request:Request,@Param('id') id:string,@Body() raw:unknown){await this.auth.authenticate(request,'admin');return this.fixtures.cancel(id,raw);}
- @Patch(':id') async reschedule(@Req() request:Request,@Param('id') id:string,@Body() raw:unknown){await this.auth.authenticate(request,'admin');return this.fixtures.reschedule(id,raw);}
+ @Post() async publish(@Req() request:Request,@Body() raw:unknown){const {user}=await this.auth.authenticate(request,'admin');return this.fixtures.publish(raw,user.id);}
+ @Post(':id/start') async start(@Req() request:Request,@Param('id') id:string,@Body() raw:unknown){const {user}=await this.auth.authenticate(request,'admin');return this.fixtures.start(id,raw,user.id);}
+ @Post(':id/cancel') async cancel(@Req() request:Request,@Param('id') id:string,@Body() raw:unknown){const {user}=await this.auth.authenticate(request,'admin');return this.fixtures.cancel(id,raw,user.id);}
+ @Patch(':id') async reschedule(@Req() request:Request,@Param('id') id:string,@Body() raw:unknown){const {user}=await this.auth.authenticate(request,'admin');return this.fixtures.reschedule(id,raw,user.id);}
 }

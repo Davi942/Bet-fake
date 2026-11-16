@@ -5,7 +5,7 @@
 <title>Bet-fake — demonstração local</title>
 <link rel="stylesheet" href="/style.css">
 <script src="/fixtures.js" defer></script>
-<script src="/auth.js" defer></script><script src="/teams.js" defer></script><script src="/wallet.js" defer></script><script src="/bets.js" defer></script>
+<script src="/auth.js" defer></script><script src="/teams.js" defer></script><script src="/wallet.js" defer></script><script src="/bets.js" defer></script><script src="/admin.js" defer></script>
 <body><main><h1>Bet-fake</h1><p>Dinheiro fictício — projeto de estudo.</p>
 <nav aria-label="Navegação"><a href="#teams-section">Times e jogadores</a> <a href="#fixtures">Partidas públicas</a> <a href="#access" id="access-link">Entrar ou cadastrar</a> <a href="#personal" id="personal-link" hidden>Minha conta</a> <a href="#administration" id="admin-link" hidden>Administração</a> <button id="logout" hidden>Sair</button></nav>
 <p id="auth-status" role="status" aria-live="polite"></p>
@@ -18,7 +18,10 @@
 <label>Partida <select id="bet-fixture" required></select></label><label>Mercado <select id="bet-market"><option value="result">Resultado da partida (1X2)</option><option value="exactScore">Placar exato</option></select></label><label>Seleção <select id="bet-selection" required></select></label><label>Valor fictício em R$ <input id="bet-amount" inputmode="decimal" required placeholder="1,50" pattern="[0-9]+([,.][0-9]{1,2})?"></label><p id="bet-quote" aria-live="polite"></p><button id="bet-submit">Confirmar aposta simulada</button></form>
 <p id="bet-status" role="status" aria-live="polite"></p><button id="bets-refresh" type="button">Sincronizar partidas e minhas apostas</button>
 <h3>Minhas apostas</h3><p>Retorno potencial inclui o valor apostado. Datas em America/Sao_Paulo.</p><label>Filtrar por partida <select id="bets-fixture-filter"><option value="">Todas</option></select></label><label>Filtrar por situação <select id="bets-status-filter"><option value="">Todas</option><option value="pending">Pendente</option><option value="won">Ganha</option><option value="lost">Perdida</option><option value="refunded">Estornada</option></select></label><div id="bets-list"></div></section>
-<section id="administration" hidden><h2>Administração</h2><p id="admin-user"></p><div id="fixture-management"></div><div id="team-management"></div></section>
+<section id="administration" hidden><h2>Administração</h2><p id="admin-user"></p>
+<section aria-labelledby="finance-title"><h3 id="finance-title">Painel financeiro da casa</h3><p>Valores fictícios em reais e centavos. O resultado da casa considera apenas partidas encerradas e pode ser negativo.</p><button id="admin-refresh" type="button">Atualizar painel e histórico</button><p id="admin-finance-status" role="status" aria-live="polite"></p><div id="admin-finance"></div></section>
+<section aria-labelledby="audit-title"><h3 id="audit-title">Histórico administrativo</h3><p>Datas em America/Sao_Paulo. Acesso exclusivo de administradores.</p><div class="table-scroll"><table><thead><tr><th>Data</th><th>Autor</th><th>Ação</th><th>Alterações</th></tr></thead><tbody id="admin-audit"></tbody></table></div></section>
+<div id="fixture-management"></div><div id="team-management"></div></section>
 <section id="teams-section"><h2>Times e jogadores</h2><p>Dados atuais. As escalações das partidas publicadas permanecem fixadas.</p><p id="team-status" role="status" aria-live="polite"></p><div id="teams"></div></section><h2>Partidas e acompanhamento ao vivo</h2><p>Horários em America/Sao_Paulo. Simulação de aproximadamente 5 minutos, com 90 minutos regulamentares e 4 de acréscimos.</p>
 <p id="status" role="status" aria-live="polite">Carregando partidas…</p><button id="refresh-fixtures" type="button">Atualizar partidas e odds</button><div id="fixtures"></div>
 <a href="/api/health">Verificar conexão com o banco</a></main></body>
