@@ -18,12 +18,12 @@ Todos os tickets estão em https://github.com/users/Davi942/projects/1.
 | [#4](https://github.com/Davi942/Bet-fake/issues/4) | Partidas e mercados pré-jogo | #3 | Done / [#16](https://github.com/Davi942/Bet-fake/pull/16) |
 | [#5](https://github.com/Davi942/Bet-fake/issues/5) | Carteira e extrato | #2 | Done / [#17](https://github.com/Davi942/Bet-fake/pull/17) |
 | [#6](https://github.com/Davi942/Bet-fake/issues/6) | Apostas pré-jogo | #4, #5 | Done / [#18](https://github.com/Davi942/Bet-fake/pull/18) |
-| [#7](https://github.com/Davi942/Bet-fake/issues/7) | Simulação ao vivo | #4 | In progress (implementação e validação) |
-| [#8](https://github.com/Davi942/Bet-fake/issues/8) | Apostas ao vivo | #6, #7 | Backlog |
-| [#9](https://github.com/Davi942/Bet-fake/issues/9) | Liquidação | #6, #7 | Backlog |
-| [#10](https://github.com/Davi942/Bet-fake/issues/10) | Cancelamento e estorno | #4, #5, #6 | Backlog |
-| [#11](https://github.com/Davi942/Bet-fake/issues/11) | Painel e auditoria | #3, #4, #5, #6, #9, #10 | Backlog |
-| [#12](https://github.com/Davi942/Bet-fake/issues/12) | Experiência responsiva | #2, #4, #5, #6, #7, #8, #9, #10, #11 | Backlog |
+| [#7](https://github.com/Davi942/Bet-fake/issues/7) | Simulação ao vivo | #4 | Done / [#19](https://github.com/Davi942/Bet-fake/pull/19) |
+| [#8](https://github.com/Davi942/Bet-fake/issues/8) | Apostas ao vivo | #6, #7 | Done / [#20](https://github.com/Davi942/Bet-fake/pull/20) |
+| [#9](https://github.com/Davi942/Bet-fake/issues/9) | Liquidação | #6, #7 | Done / [#21](https://github.com/Davi942/Bet-fake/pull/21) |
+| [#10](https://github.com/Davi942/Bet-fake/issues/10) | Cancelamento e estorno | #4, #5, #6 | Done / [#22](https://github.com/Davi942/Bet-fake/pull/22) |
+| [#11](https://github.com/Davi942/Bet-fake/issues/11) | Painel e auditoria | #3, #4, #5, #6, #9, #10 | Done / [#23](https://github.com/Davi942/Bet-fake/pull/23) |
+| [#12](https://github.com/Davi942/Bet-fake/issues/12) | Experiência responsiva | #2, #4, #5, #6, #7, #8, #9, #10, #11 | Done / [#24](https://github.com/Davi942/Bet-fake/pull/24) |
 
 ## Pontos de teste
 
