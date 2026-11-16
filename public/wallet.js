@@ -5,6 +5,10 @@ let walletGeneration = 0;
 let walletSession = 0;
 let pendingOperation = null;
 let walletBusy = false;
+let walletPulseBusy = false;
+let walletPulseQueued = false;
+let walletSnapshot = '';
+let walletSyncError = false;
 const walletForm = document.querySelector('#wallet-form');
 const walletSubmit = document.querySelector('#wallet-submit');
 const money = formatMoneyCents;
@@ -30,8 +34,10 @@ async function loadWallet() {
   try {
     const wallet = await walletApi('/api/wallet');
     if (generation !== walletGeneration) return;
-    renderWallet(wallet);
-  } catch (error) { if (generation === walletGeneration) walletStatus.textContent = error.message; }
+    const snapshot = JSON.stringify(wallet);
+    if (snapshot !== walletSnapshot) { walletSnapshot = snapshot; renderWallet(wallet); }
+    if (walletSyncError) { walletSyncError = false; walletStatus.textContent = 'Carteira sincronizada.'; }
+  } catch (error) { if (generation === walletGeneration) { walletSyncError = true; walletStatus.textContent = error.message; } }
 }
 document.addEventListener('session-changed', event => {
   const owner = event.detail?.role === 'bettor' ? event.detail.email : null;
@@ -39,17 +45,31 @@ document.addEventListener('session-changed', event => {
   walletOwner = owner;
   walletSession++;
   walletGeneration++;
+  walletPulseQueued = false;
   pendingOperation = null;
   walletBusy = false;
   walletForm.reset();
   updateWalletForm();
   walletEntries.replaceChildren();
+  walletSnapshot = '';
+  walletSyncError = false;
   document.querySelector('#balance').textContent = '';
   walletStatus.textContent = '';
   if (owner) loadWallet();
 });
 document.querySelector('#wallet-refresh').addEventListener('click', loadWallet);
 document.addEventListener('bet-accepted', loadWallet);
+async function refreshWalletFromPulse() {
+  if (!walletOwner) return;
+  if (walletPulseBusy) { walletPulseQueued = true; return; }
+  walletPulseBusy = true;
+  try { await loadWallet(); }
+  finally {
+    walletPulseBusy = false;
+    if (walletPulseQueued) { walletPulseQueued = false; queueMicrotask(refreshWalletFromPulse); }
+  }
+}
+document.addEventListener('financial-refresh', refreshWalletFromPulse);
 
 async function walletApi(path, body) {
   const session = walletSession;
